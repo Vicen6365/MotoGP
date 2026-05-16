@@ -125,10 +125,7 @@ fun GpCard(
     onToggle: () -> Unit,
     onAddSession: (String) -> Unit
 ) {
-    val bgColor = when {
-        event.isCompleted -> MotoGPSurface
-        true -> MotoGPSurfaceVariant // current/upcoming get more visible
-    }
+    val bgColor = if (event.isCompleted) MotoGPSurface else MotoGPSurfaceVariant
 
     Card(
         modifier = Modifier.fillMaxWidth(),
@@ -174,16 +171,8 @@ fun GpCard(
                 }
 
                 // Status badge
-                val statusText = when {
-                    event.isCompleted -> "✓"
-                    true -> "▾"
-                    else -> ""
-                }
-                val statusColor = when {
-                    event.isCompleted -> MotoGPSuccess
-                    true -> MotoGPRed
-                    else -> MotoGPTextMuted
-                }
+                val statusText = if (event.isCompleted) "✓" else "▾"
+                val statusColor = if (event.isCompleted) MotoGPSuccess else MotoGPRed
                 Text(statusText, color = statusColor, fontWeight = FontWeight.Bold, fontSize = 18.sp)
             }
 
