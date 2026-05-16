@@ -129,26 +129,18 @@ fun GpCard(
     onToggle: () -> Unit,
     onAddSession: (String) -> Unit
 ) {
-    val bgColor = when {
-        event.isCompleted -> MotoGPSurface
-        isCurrent -> MotoGPSurfaceVariant
-        else -> MotoGPSurface.copy(alpha = 0.5f)
-    }
-    val accentColor = when {
-        event.isCompleted -> MotoGPSuccess
-        isCurrent -> MotoGPRed
-        else -> MotoGPTextMuted
-    }
-    val roundBg = when {
-        event.isCompleted -> MotoGPSuccess.copy(alpha = 0.15f)
-        isCurrent -> MotoGPRed.copy(alpha = 0.15f)
-        else -> MotoGPTextMuted.copy(alpha = 0.08f)
-    }
-    val statusText = when {
-        event.isCompleted -> "✓"
-        isCurrent -> "◉"
-        else -> "▸"
-    }
+    val bgColor = if (event.isCompleted) MotoGPSurface
+        else if (isCurrent) MotoGPSurfaceVariant
+        else MotoGPSurface.copy(alpha = 0.5f)
+    val accentColor = if (event.isCompleted) MotoGPSuccess
+        else if (isCurrent) MotoGPRed
+        else MotoGPTextMuted
+    val roundBg = if (event.isCompleted) MotoGPSuccess.copy(alpha = 0.15f)
+        else if (isCurrent) MotoGPRed.copy(alpha = 0.15f)
+        else MotoGPTextMuted.copy(alpha = 0.08f)
+    val statusText = if (event.isCompleted) "✓"
+        else if (isCurrent) "◉"
+        else "▸"
 
     Card(
         modifier = Modifier.fillMaxWidth(),
