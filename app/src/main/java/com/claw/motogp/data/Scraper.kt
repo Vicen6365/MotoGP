@@ -346,9 +346,9 @@ object Scraper {
             val titleText = rows[0].text().lowercase()
             val sessionKey = when {
                 titleText.contains("full qualifying") || titleText.contains("qualifying results") -> "Q2"
-                titleText.contains("saturday free practice") -> "FP2"
+                titleText.contains("saturday free practice") || titleText.contains("fp2") -> "FP2"
                 titleText.contains("practice results") && !titleText.contains("free") -> "Practice"
-                titleText.contains("free practice 1") || titleText.contains("fp1") -> "FP1"
+                titleText.contains("free practice 1") || titleText.contains("fp1") || titleText.contains("free practice (1)") -> "FP1"
                 titleText.contains("sprint race") -> "Sprint"
                 titleText.contains("race results") || titleText.contains("grand prix") -> "Race"
                 titleText.contains("warm up") -> "WU"
@@ -362,36 +362,47 @@ object Scraper {
             for (i in dataStartIdx until rows.size) {
                 val row = rows[i]
                 val cells = row.select("td")
-                if (cells.size < 3) continue
+                if (cells.size < 4) continue
 
-                // Get position from first cell
+                val colCount = cells.size
+
+                // Column layout varies:
+                // Practice (8 cols):   [0]pos [1]arrow [2]rider [3]nat [4]team [5]time [6]lap [7]speed
+                // FP1 (7 cols):        [0]pos [1]rider  [2]nat   [3]team [4]time [5]lap [6]speed
+                val riderStartIdx = if (colCount >= 8) 2 else 1
+                val natIdx = if (colCount >= 8) 3 else 2
+                val teamIdx = natIdx + 1
+
+                // Position
                 val posText = cells[0].text().trim()
                 val pos = posText.toIntOrNull() ?: continue
 
-                // Get rider name from second cell - remove nationality and position change arrows
-                val riderCell = cells[1].text().trim()
-                val riderName = riderCell.replace(Regex("[\\^\\u02C5=\\u02C3]\\d*\\s*"), "").trim()
+                // Rider name
+                val riderName = cells[riderStartIdx].text().trim()
+                if (riderName.length < 2) continue
 
-                // Get team from third cell - extract before (bike)
-                val teamCell = cells[2].text().trim()
-                val team = teamCell.substringBefore("(").trim()
+                // Team - extract before (bike)
+                val teamText = cells[teamIdx].text().trim()
+                val team = teamText.substringBefore("(").trim()
 
-                // Find time column (last numeric column)
-                val timeCols = cells.filter { c ->
-                    val t = c.text().trim()
-                    t.matches(Regex("""[\d'+].*""")) && !t.matches(Regex("""\d{3,4}k"""))
+                // Time - find the last column with a time/gap pattern
+                var time = ""
+                for (ci in colCount - 1 downTo 0) {
+                    val t = cells[ci].text().trim()
+                    if (t.matches(Regex("""[\d'+].*""")) && !t.matches(Regex("""\d{3,4}k""")) && !t.matches(Regex("""\d+/\d+"""))) {
+                        time = t
+                        break
+                    }
                 }
-                val time = timeCols.lastOrNull()?.text()?.trim() ?: ""
 
-                if (riderName.length > 2) {
-                    parsed.add(SessionResult(pos, riderName, team, time))
-                }
+                parsed.add(SessionResult(pos, riderName, team, time))
             }
 
             if (parsed.isNotEmpty()) {
                 results[sessionKey] = parsed
             }
         }
+    }
     }
     fun computeRiderHistory(standings: List<RiderStanding>): List<RiderHistory> {
         return standings.take(5).map { RiderHistory(it.rider, listOf(it.points)) }
