@@ -813,20 +813,17 @@ object Scraper {
 }
     private fun extractCircuitRecordFromCrash(doc: Document, articleHref: String): Pair<String, CircuitRecord>? {
         return try {
-            
             val text = doc.body().text()
-            if (!text.contains("Best lap:", ignoreCase = true)) return@try null
+            if (!text.contains("Best lap:", ignoreCase = true)) return null
 
-            // Pattern: "Best lap: Rider, Team, 1m 29.288s (2026)"
             val bestLapRegex = Regex("""Best lap: ([^,]+), ([^,]+), (\d+)m (\d+\.\d+)s \((\d{4})\)""", RegexOption.IGNORE_CASE)
-            val match = bestLapRegex.find(text) ?: return@try null
+            val match = bestLapRegex.find(text) ?: return null
             val rider = match.groupValues[1].trim()
             val time = "${match.groupValues[3]}'${match.groupValues[4]}s"
             val year = match.groupValues[5]
 
-            // Map GP from article href to circuit name
             val hrefLower = articleHref.lowercase()
-            val circuitName = when {
+            val circuitName: String = when {
                 hrefLower.contains("catal") -> "Circuit de Barcelona-Catalunya"
                 hrefLower.contains("french") || hrefLower.contains("mans") -> "Bugatti Circuit (Le Mans)"
                 hrefLower.contains("jerez") || hrefLower.contains("spain") -> "Circuito de Jerez - Ángel Nieto"
@@ -849,10 +846,9 @@ object Scraper {
                 hrefLower.contains("qatar") || hrefLower.contains("losail") -> "Lusail International Circuit"
                 hrefLower.contains("portugal") || hrefLower.contains("algarve") -> "Autódromo Internacional do Algarve"
                 hrefLower.contains("valencia") || hrefLower.contains("ricardo tormo") -> "Circuit Ricardo Tormo"
-                else -> return@try null
+                else -> return null
             }
 
-            val record = CircuitRecord(time, rider, year)
             Pair(circuitName, CircuitRecord(time, rider, year))
         } catch (_: Exception) { null }
     }
