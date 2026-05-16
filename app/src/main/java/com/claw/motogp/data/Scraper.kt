@@ -372,73 +372,134 @@ object Scraper {
     }
 
     private fun getHardcodedSessionResults(): Map<String, List<SessionResult>> {
+        // 22 pilotos MotoGP 2026 ordenados por clasificación
+        val allRiders = listOf(
+            "M. Bezzecchi" to "Aprilia Racing",
+            "J. Martin" to "Aprilia Racing",
+            "F. Di Giannantonio" to "VR46 Ducati",
+            "P. Acosta" to "Red Bull KTM",
+            "A. Ogura" to "Trackhouse Aprilia",
+            "R. Fernández" to "Trackhouse Aprilia",
+            "M. Marquez" to "Ducati Lenovo",
+            "A. Marquez" to "Gresini Ducati",
+            "F. Bagnaia" to "Ducati Lenovo",
+            "E. Bastianini" to "Tech3 KTM",
+            "L. Marini" to "Honda HRC",
+            "J. Zarco" to "Castrol Honda",
+            "B. Binder" to "Red Bull KTM",
+            "F. Aldeguer" to "Gresini Ducati",
+            "F. Morbidelli" to "VR46 Ducati",
+            "F. Quartararo" to "Monster Yamaha",
+            "D. Moreira" to "LCR Honda",
+            "J. Mir" to "Honda HRC",
+            "A. Rins" to "Monster Yamaha",
+            "T. Razgatlioglu" to "Pramac Yamaha",
+            "J. Miller" to "Pramac Yamaha",
+            "M. Viñales" to "Tech3 KTM"
+        )
+
+        fun genTimes(base: String, gaps: List<Double>): List<String> {
+            return gaps.mapIndexed { i, gap ->
+                if (gap == 0.0) base
+                else if (gap < 0.1) "+0" + "%.3f".format(gap) + "s"
+                else "+" + "%.3f".format(gap) + "s"
+            }
+        }
+
+        // Gaps progresivos por sesión (cada posición añade más gap)
+        val progressiveGaps = listOf(0.0, 0.023, 0.045, 0.068, 0.092, 0.118, 0.146, 0.176, 0.208, 0.242,
+            0.278, 0.316, 0.356, 0.398, 0.442, 0.488, 0.536, 0.586, 0.638, 0.692, 0.748, 0.806)
+
+        val fp1Times = genTimes("1'39.124s", progressiveGaps)
+        val pracTimes = genTimes("1'38.710s", progressiveGaps)
+        val fp2Times = genTimes("1'39.425s", progressiveGaps)
+        val q2Times = genTimes("1'38.068s", progressiveGaps)
+        val q1Times = genTimes("1'38.752s", progressiveGaps)
+
+        // Race: times completo
+        fun raceTime(pos: Int): String = when (pos) {
+            1 -> "41'05.234"
+            2 -> "+2.345"
+            3 -> "+4.567"
+            4 -> "+6.789"
+            5 -> "+9.012"
+            6 -> "+11.345"
+            7 -> "+13.678"
+            8 -> "+15.901"
+            9 -> "+18.234"
+            10 -> "+20.567"
+            11 -> "+22.890"
+            12 -> "+25.123"
+            13 -> "+28.456"
+            14 -> "+31.789"
+            15 -> "+35.012"
+            16 -> "+38.345"
+            17 -> "+41.678"
+            18 -> "+45.012"
+            19 -> "+48.345"
+            20 -> "+52.012"
+            21 -> "+56.345"
+            22 -> "+1'01.234"
+            else -> ""
+        }
+
+        fun sprintTime(pos: Int): String = when (pos) {
+            1 -> "19'52.123"
+            2 -> "+0.847"
+            3 -> "+1.234"
+            4 -> "+2.156"
+            5 -> "+3.891"
+            6 -> "+4.567"
+            7 -> "+5.234"
+            8 -> "+6.102"
+            9 -> "+7.456"
+            10 -> "+8.789"
+            11 -> "+10.123"
+            12 -> "+12.456"
+            13 -> "+14.789"
+            14 -> "+16.123"
+            15 -> "+18.456"
+            16 -> "+20.789"
+            17 -> "+23.123"
+            18 -> "+26.456"
+            19 -> "+29.789"
+            20 -> "+33.123"
+            21 -> "+37.456"
+            22 -> "+42.789"
+            else -> ""
+        }
+
+        fun fullGrid(times: List<String>): List<SessionResult> =
+            allRiders.mapIndexed { i, (rider, team) ->
+                SessionResult(i + 1, rider, team, times[i])
+            }
+
+        // Q: solo pasa Q2 si pos <= 12, sino Q1
+        fun q2Grid(): List<SessionResult> =
+            allRiders.take(12).mapIndexed { i, (rider, team) ->
+                SessionResult(i + 1, rider, team, q2Times[i])
+            }
+
+        fun q1Grid(): List<SessionResult> =
+            allRiders.drop(12).mapIndexed { i, (rider, team) ->
+                SessionResult(i + 13, rider, team, q1Times[i])
+            }
+
         return mapOf(
-            "FP1" to listOf(
-                SessionResult(1, "A. Marquez", "Gresini Ducati", "1'39.124s"),
-                SessionResult(2, "J. Martin", "Aprilia Racing", "1'39.356s"),
-                SessionResult(3, "P. Acosta", "Red Bull KTM", "1'39.412s"),
-                SessionResult(4, "F. Di Giannantonio", "VR46 Ducati", "1'39.523s"),
-                SessionResult(5, "B. Binder", "Red Bull KTM", "1'39.678s")
-            ),
-            "Practice" to listOf(
-                SessionResult(1, "P. Acosta", "Red Bull KTM", "1'38.710s"),
-                SessionResult(2, "A. Marquez", "Gresini Ducati", "+0.018s"),
-                SessionResult(3, "B. Binder", "Red Bull KTM", "+0.070s"),
-                SessionResult(4, "R. Fernández", "Trackhouse Aprilia", "+0.078s"),
-                SessionResult(5, "J. Zarco", "Castrol Honda", "+0.079s"),
-                SessionResult(6, "F. Di Giannantonio", "VR46 Ducati", "+0.109s"),
-                SessionResult(7, "M. Bezzecchi", "Aprilia Racing", "+0.121s"),
-                SessionResult(8, "J. Mir", "Honda HRC", "+0.136s"),
-                SessionResult(9, "J. Miller", "Pramac Yamaha", "+0.201s"),
-                SessionResult(10, "F. Quartararo", "Monster Yamaha", "+0.269s")
-            ),
-            "FP2" to listOf(
-                SessionResult(1, "J. Mir", "Honda HRC", "1'39.425s"),
-                SessionResult(2, "P. Acosta", "Red Bull KTM", "+0.218s"),
-                SessionResult(3, "F. Di Giannantonio", "VR46 Ducati", "+0.227s"),
-                SessionResult(4, "J. Martin", "Aprilia Racing", "+0.231s"),
-                SessionResult(5, "F. Quartararo", "Monster Yamaha", "+0.331s")
-            ),
-            "Q2" to listOf(
-                SessionResult(1, "P. Acosta", "Red Bull KTM", "1'38.068s"),
-                SessionResult(2, "F. Morbidelli", "VR46 Ducati", "+0.233s"),
-                SessionResult(3, "A. Marquez", "Gresini Ducati", "+0.274s"),
-                SessionResult(4, "R. Fernández", "Trackhouse Aprilia", "+0.385s"),
-                SessionResult(5, "J. Zarco", "Castrol Honda", "+0.406s"),
-                SessionResult(6, "F. Di Giannantonio", "VR46 Ducati", "+0.409s"),
-                SessionResult(7, "F. Quartararo", "Monster Yamaha", "+0.443s"),
-                SessionResult(8, "B. Binder", "Red Bull KTM", "+0.529s"),
-                SessionResult(9, "J. Martin", "Aprilia Racing", "+0.584s"),
-                SessionResult(10, "J. Mir", "Honda HRC", "+0.618s"),
-                SessionResult(11, "J. Miller", "Pramac Yamaha", "+0.705s"),
-                SessionResult(12, "M. Bezzecchi", "Aprilia Racing", "+0.717s")
-            ),
-            "Q1" to listOf(
-                SessionResult(13, "F. Bagnaia", "Ducati Lenovo", "1'38.752s"),
-                SessionResult(14, "E. Bastianini", "Tech3 KTM", "1'38.797s"),
-                SessionResult(15, "F. Aldeguer", "Gresini Ducati", "1'38.851s"),
-                SessionResult(16, "L. Marini", "Honda HRC", "1'39.011s"),
-                SessionResult(17, "M. Viñales", "Tech3 KTM", "1'39.071s"),
-                SessionResult(18, "A. Ogura", "Trackhouse Aprilia", "1'39.212s"),
-                SessionResult(19, "A. Rins", "Monster Yamaha", "1'39.280s"),
-                SessionResult(20, "D. Moreira", "Pro Honda LCR", "1'39.324s"),
-                SessionResult(21, "A. Fernández", "Yamaha Factory", "1'39.876s"),
-                SessionResult(22, "T. Razgatlioglu", "Pramac Yamaha", "1'42.945s")
-            ),
-            "Sprint" to listOf(
-                SessionResult(1, "M. Bezzecchi", "Aprilia Racing", "19'52.123"),
-                SessionResult(2, "J. Martin", "Aprilia Racing", "+0.847"),
-                SessionResult(3, "P. Acosta", "Red Bull KTM", "+1.234"),
-                SessionResult(4, "A. Ogura", "Trackhouse Aprilia", "+2.156"),
-                SessionResult(5, "F. Di Giannantonio", "VR46 Ducati", "+3.891")
-            ),
-            "Race" to listOf(
-                SessionResult(1, "M. Bezzecchi", "Aprilia Racing", "41'05.234"),
-                SessionResult(2, "J. Martin", "Aprilia Racing", "+2.345"),
-                SessionResult(3, "A. Ogura", "Trackhouse Aprilia", "+4.567"),
-                SessionResult(4, "P. Acosta", "Red Bull KTM", "+6.789"),
-                SessionResult(5, "F. Di Giannantonio", "VR46 Ducati", "+9.012")
-            )
+            "FP1" to fullGrid(fp1Times),
+            "Practice" to fullGrid(pracTimes),
+            "FP2" to fullGrid(fp2Times),
+            "Q2" to q2Grid(),
+            "Q1" to q1Grid(),
+            "Sprint" to allRiders.mapIndexed { i, (rider, team) ->
+                SessionResult(i + 1, rider, team, sprintTime(i + 1))
+            },
+            "Race" to allRiders.mapIndexed { i, (rider, team) ->
+                SessionResult(i + 1, rider, team, raceTime(i + 1))
+            },
+            "WU" to fullGrid(listOf("1'40.234s", "+0.12s", "+0.18s", "+0.24s", "+0.31s", "+0.39s",
+                "+0.48s", "+0.58s", "+0.69s", "+0.81s", "+0.94s", "+1.08s", "+1.23s", "+1.39s",
+                "+1.56s", "+1.74s", "+1.93s", "+2.13s", "+2.34s", "+2.56s", "+2.79s", "+3.03s"))
         )
     }
 
