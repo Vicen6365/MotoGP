@@ -255,7 +255,12 @@ fun SessionCard(session: Session, onClick: () -> Unit) {
                 }
                 
                 if (session.isCompleted) {
+                    
+                if (session.isCompleted) {
                     Text("▸", color = sessionColor.copy(alpha = 0.5f), fontSize = 12.sp)
+                } else {
+                    Text("🔒", fontSize = 11.sp)
+                }
                 } else {
                     Text("🔒", fontSize = 11.sp)
                 }
