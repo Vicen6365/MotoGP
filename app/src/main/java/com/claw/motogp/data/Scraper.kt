@@ -41,7 +41,7 @@ object Scraper {
                 val end = sdf.parse("$eDay $eMonth $year") ?: continue
                 val cal = java.util.Calendar.getInstance().apply { time = end; add(java.util.Calendar.DAY_OF_MONTH, 3) }
                 if (now.after(start) && now.before(cal.time)) return i
-            } catch (_: Exception) {}
+            } catch (_: Exception) { null }
         }
         for ((i, gp) in calendars.withIndex()) {
             if (!gp.isCompleted) return i
@@ -173,8 +173,8 @@ object Scraper {
 
                 // Session -> day offset from race day (Sunday)
                 // Friday=-2, Saturday=-1, Sunday=0
-                val dayOffsets = listOf(-2, -2, -1, -1, -1, -1, 0, 0)
-                val dayLabels = listOf("Viernes", "Viernes", "Sábado", "Sábado", "Sábado", "Sábado", "Domingo", "Domingo")
+                val dayOffsets = listOf(-2, -2, -1, -1, -1, 0, 0)
+                val dayLabels = listOf("Viernes", "Viernes", "Sábado", "Sábado", "Sábado", "Domingo", "Domingo")
 
                 for (i in baseSessions.indices) {
                     val offset = dayOffsets.getOrElse(i) { 0 }
@@ -208,7 +208,7 @@ object Scraper {
                         isCompleted = isCompleted
                     )
                 }
-            } catch (_: Exception) {}
+            } catch (_: Exception) { null }
         }
 
         val circuitMap = mapOf(
@@ -254,8 +254,7 @@ object Scraper {
             Session("Free Practice 1", "FP1", "Viernes", "", "10:45"),
             Session("Practice", "Practice", "Viernes", "", "15:00"),
             Session("Free Practice 2", "FP2", "Sábado", "", "10:10"),
-            Session("Qualifying 1", "Q1", "Sábado", "", "10:50"),
-            Session("Qualifying 2", "Q2", "Sábado", "", "11:15"),
+            Session("Qualifying", "Q1+Q2", "Sábado", "", "11:15"),
             Session("Sprint", "Sprint", "Sábado", "", "15:00"),
             Session("Warm Up", "WU", "Domingo", "", "09:40"),
             Session("Race", "Race", "Domingo", "", "14:00")
@@ -347,8 +346,9 @@ object Scraper {
                 try {
                     val article = Jsoup.connect(link.attr("abs:href")).timeout(TIMEOUT).get()
                     extractResultsFromHtml(article, results)
-                    extractCircuitRecordFromCrash(article, link.attr("href"))
-                } catch (_: Exception) {}
+                    val recordResult = extractCircuitRecordFromCrash(article, link.attr("href"))
+                    if (recordResult != null) CircuitData.updatedRecords[recordResult.first] = recordResult.second
+                } catch (_: Exception) { null }
             }
 
             results
@@ -366,7 +366,7 @@ object Scraper {
 
             val titleText = rows[0].text().lowercase()
             val sessionKey = when {
-                titleText.contains("full qualifying") || titleText.contains("qualifying results") -> "Q2"
+                titleText.contains("full qualifying") || titleText.contains("qualifying results") -> "Q1+Q2"
                 titleText.contains("saturday free practice") || titleText.contains("fp2") -> "FP2"
                 titleText.contains("practice results") && !titleText.contains("free") -> "Practice"
                 titleText.contains("free practice 1") || titleText.contains("fp1") || titleText.contains("free practice (1)") -> "FP1"
@@ -387,7 +387,7 @@ object Scraper {
 
                 // Different table layouts:
                 // Practice (6 cols): [0]pos [1]arrow [2]rider [3]nat [4]team [5]time
-                // FP1/Q2/Sprint (7 cols): [0]pos [1]rider [2]nat [3]team [4]time [5]lap [6]speed
+                // FP1/Q1+Q2/Sprint (7 cols): [0]pos [1]rider [2]nat [3]team [4]time [5]lap [6]speed
                 // Sprint (5 cols): [0]pos [1]rider [2]nat [3]team [4]time
                 // Saturday (8 cols): [0]pos [1]arrow [2]rider [3]nat [4]team [5]time [6]lap [7]speed
                 val riderIdx: Int
@@ -422,8 +422,8 @@ object Scraper {
             }
             if (parsed.isNotEmpty()) {
                 results[sessionKey] = parsed
-                // Full Qualifying table covers both Q1 and Q2
-                if (sessionKey == "Q2") results["Q1"] = parsed
+                // Full Qualifying table covers Q1+Q2
+                if (sessionKey == "Q1+Q2") results["Q1+Q2"] = parsed
             }
         }
     }
@@ -437,9 +437,9 @@ object Scraper {
     fun fetchCircuitRecords(): Map<String, CircuitRecord> {
         val records = try {
             val doc = Jsoup.connect(RECORDS_URL).timeout(TIMEOUT).get()
-            parseCircuitRecords(doc)
+            parseCircuitRecords(doc).toMutableMap()
         } catch (e: Exception) {
-            emptyMap()
+            mutableMapOf()
         }
         // Also try to get updated circuit records from crash.net recent articles
         try {
@@ -453,11 +453,12 @@ object Scraper {
                 // Only fetch actual race result articles (skip analysis/preview)
                 if (hrefLower.contains("race-results") || hrefLower.contains("warm-race-results")) {
                     val article = Jsoup.connect(link.attr("abs:href")).timeout(TIMEOUT).get()
-                    extractCircuitRecordFromCrash(article, href)
-                    break // Most recent race article is enough
+                    val crashRecord = extractCircuitRecordFromCrash(article, href)
+                    if (crashRecord != null) records[crashRecord.first] = crashRecord.second
+                    // Process all race result articles
                 }
             }
-        } catch (_: Exception) {}
+        } catch (_: Exception) { null }
         return records
     }
 
@@ -568,8 +569,7 @@ object Scraper {
         val fp1Times = genTimes("1'39.124s", progressiveGaps)
         val pracTimes = genTimes("1'38.710s", progressiveGaps)
         val fp2Times = genTimes("1'39.425s", progressiveGaps)
-        val q2Times = genTimes("1'38.068s", progressiveGaps)
-        val q1Times = genTimes("1'38.752s", progressiveGaps)
+        val fullTimes = genTimes("1'38.068s", progressiveGaps)
 
         fun raceTime(pos: Int): String = when (pos) {
             1 -> "41'05.234"
@@ -628,22 +628,12 @@ object Scraper {
                 SessionResult(i + 1, rider, team, times[i])
             }
 
-        fun q2Grid(): List<SessionResult> =
-            allRiders.take(12).mapIndexed { i, (rider, team) ->
-                SessionResult(i + 1, rider, team, q2Times[i])
-            }
-
-        fun q1Grid(): List<SessionResult> =
-            allRiders.drop(12).mapIndexed { i, (rider, team) ->
-                SessionResult(i + 13, rider, team, q1Times[i])
-            }
 
         return mapOf(
             "FP1" to fullGrid(fp1Times),
             "Practice" to fullGrid(pracTimes),
             "FP2" to fullGrid(fp2Times),
-            "Q2" to q2Grid(),
-            "Q1" to q1Grid(),
+            "Q1+Q2" to fullGrid(fullTimes),
             "Sprint" to allRiders.mapIndexed { i, (rider, team) ->
                 SessionResult(i + 1, rider, team, sprintTime(i + 1))
             },
@@ -708,7 +698,7 @@ object Scraper {
         for (d in raceDates) {
             try {
                 if (sdf.parse(d)?.before(now) == true) count++
-            } catch (_: Exception) {}
+            } catch (_: Exception) { null }
         }
         return count
     }
@@ -821,14 +811,15 @@ object Scraper {
         )
     )
 }
-    private fun extractCircuitRecordFromCrash(doc: Document, articleHref: String) {
-        try {
+    private fun extractCircuitRecordFromCrash(doc: Document, articleHref: String): Pair<String, CircuitRecord>? {
+        return try {
+            
             val text = doc.body().text()
-            if (!text.contains("Best lap:", ignoreCase = true)) return
+            if (!text.contains("Best lap:", ignoreCase = true)) return@try null
 
             // Pattern: "Best lap: Rider, Team, 1m 29.288s (2026)"
             val bestLapRegex = Regex("""Best lap: ([^,]+), ([^,]+), (\d+)m (\d+\.\d+)s \((\d{4})\)""", RegexOption.IGNORE_CASE)
-            val match = bestLapRegex.find(text) ?: return
+            val match = bestLapRegex.find(text) ?: return@try null
             val rider = match.groupValues[1].trim()
             val time = "${match.groupValues[3]}'${match.groupValues[4]}s"
             val year = match.groupValues[5]
@@ -858,12 +849,12 @@ object Scraper {
                 hrefLower.contains("qatar") || hrefLower.contains("losail") -> "Lusail International Circuit"
                 hrefLower.contains("portugal") || hrefLower.contains("algarve") -> "Autódromo Internacional do Algarve"
                 hrefLower.contains("valencia") || hrefLower.contains("ricardo tormo") -> "Circuit Ricardo Tormo"
-                else -> return
+                else -> return@try null
             }
 
             val record = CircuitRecord(time, rider, year)
-            CircuitData.updatedRecords[circuitName] = record
-        } catch (_: Exception) {}
+            Pair(circuitName, CircuitRecord(time, rider, year))
+        } catch (_: Exception) { null }
     }
 
 
