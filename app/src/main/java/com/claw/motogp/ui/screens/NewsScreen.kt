@@ -198,6 +198,7 @@ private fun sourceColor(source: String): Color = when (source.lowercase()) {
     "autosport" -> Color(0xFF00BCD4) // cyan
     "crash.net" -> Color(0xFFFF5722) // orange
     "motorsport" -> Color(0xFF8BC34A) // green
+    "motorsport/es" -> Color(0xFFFF9800) // amber (Spanish section)
     else -> MotoGPTextMuted
 }
 
@@ -205,6 +206,7 @@ private fun sourceShort(source: String): String = when (source.lowercase()) {
     "autosport" -> "AU"
     "crash.net" -> "CR"
     "motorsport" -> "MS"
+    "motorsport/es" -> "ES"
     else -> "GP"
 }
 

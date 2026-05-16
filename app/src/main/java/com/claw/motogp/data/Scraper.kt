@@ -346,59 +346,81 @@ object Scraper {
         return count
     }
 
-    // ─── NOTICIAS ────────────────────────────────────────────────
+    // ─── NOTICIAS (ESPAÑOL) ──────────────────────────────────────
 
-    private const val NEWS_URL = "https://www.autosport.com/motogp/news/"
+    private const val NEWS_URL = "https://www.motorsport.com/es/motogp/news/"
 
     fun fetchNews(): List<NewsArticle> {
         return try {
             val doc = Jsoup.connect(NEWS_URL).timeout(TIMEOUT).get()
             parseNews(doc)
         } catch (e: Exception) {
-            getHardcodedNews()
+            try {
+                // Fallback: try autosport (English, but better than nothing)
+                val doc = Jsoup.connect("https://www.autosport.com/motogp/news/").timeout(TIMEOUT).get()
+                parseAutosportNews(doc)
+            } catch (e2: Exception) {
+                getHardcodedNews()
+            }
         }
     }
 
     fun parseNews(doc: Document): List<NewsArticle> {
         val articles = mutableListOf<NewsArticle>()
-        val text = doc.body().text()
 
-        // Try to find news items by looking for common patterns
-        val newsBlocks = doc.select("article, .news-item, .article-item, [class*=article], [class*=news]")
-        
-        if (newsBlocks.isNotEmpty()) {
-            for (block in newsBlocks.take(25)) {
-                val title = block.select("h1, h2, h3, h4, [class*=title], [class*=headline]")
-                    .firstOrNull()?.text()?.trim() ?: continue
+        // Try motorsport.com/es structure
+        val newsItems = doc.select("article, .ms-item, .news-item, [class*=article], [data-testid*=article]")
+        if (newsItems.isNotEmpty()) {
+            for (block in newsItems.take(30)) {
+                val titleEl = block.select("h1, h2, h3, h4, [class*=title], a[class*=title]").firstOrNull()
+                val title = titleEl?.text()?.trim() ?: continue
                 val snippet = block.select("p, [class*=desc], [class*=excerpt], [class*=teaser]")
                     .firstOrNull()?.text()?.trim() ?: ""
-                val link = block.select("a[href]").firstOrNull()
-                val url = link?.attr("abs:href") ?: ""
-                val date = block.select("time, [class*=date], [class*=time], [datetime]")
+                val link = block.select("a[href]").firstOrNull() ?: titleEl
+                val url = if (link != null) {
+                    val href = link.attr("abs:href")
+                    if (href.startsWith("http")) href else ""
+                } else ""
+                val date = block.select("time, [datetime], [class*=date]")
                     .firstOrNull()?.attr("datetime")?.take(10)
-                    ?: block.select("time, [class*=date], [class*=time]").firstOrNull()?.text()?.trim()
+                    ?: block.select("time, [class*=date]").firstOrNull()?.text()?.trim()
                     ?: ""
 
                 if (title.length > 10 && url.isNotEmpty()) {
-                    articles.add(NewsArticle(title, snippet.take(200), "autosport", url, date))
+                    articles.add(NewsArticle(title, snippet.take(200), "motorsport/es", url, date))
                 }
             }
         }
 
-        // Fallback: try to find article-like links from main content
+        // Fallback: generic link scraping
         if (articles.isEmpty()) {
-            val links = doc.select("a[href*=/motogp/]")
-            for (link in links.take(25)) {
+            val links = doc.select("a[href]")
+            for (link in links.take(40)) {
                 val title = link.text().trim()
-                if (title.length > 20 && !title.contains("Schedule") && !title.contains("Standings")) {
-                    val url = link.attr("abs:href")
+                val href = link.attr("abs:href")
+                if (title.length in 25..150 && href.contains("motogp") && !href.contains("standings") && !href.contains("schedule") && !href.contains("results")) {
                     val parent = link.parent()
                     val snippet = parent?.select("p")?.firstOrNull()?.text()?.trim() ?: ""
-                    articles.add(NewsArticle(title, snippet.take(200), "autosport", url, ""))
+                    articles.add(NewsArticle(title, snippet.take(200), "motorsport/es", href, ""))
                 }
             }
         }
 
+        return if (articles.isEmpty()) getHardcodedNews() else articles.distinctBy { it.url }.take(25)
+    }
+
+    fun parseAutosportNews(doc: Document): List<NewsArticle> {
+        val articles = mutableListOf<NewsArticle>()
+        val links = doc.select("a[href*=/motogp/]")
+        for (link in links.take(25)) {
+            val title = link.text().trim()
+            if (title.length > 20 && !title.contains("Schedule") && !title.contains("Standings")) {
+                val url = link.attr("abs:href")
+                if (url.startsWith("http")) {
+                    articles.add(NewsArticle(title, "", "autosport", url, ""))
+                }
+            }
+        }
         return if (articles.isEmpty()) getHardcodedNews() else articles.distinctBy { it.url }.take(25)
     }
 
