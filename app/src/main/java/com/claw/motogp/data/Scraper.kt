@@ -312,11 +312,15 @@ object Scraper {
                 else -> gpName.lowercase().take(6)
             }
 
+            // Deduplicate by href (crash.net duplicates each <a> with empty + text variants)
+            val seenHrefs = mutableSetOf<String>()
             val articleLinks = doc.select("a[href*=/motogp/results/]")
                 .filter { link ->
                     val text = link.text().lowercase()
                     val href = link.attr("href").lowercase()
-                    text.contains(gpKeyword.lowercase()) || href.contains(gpKeyword.lowercase())
+                    val isMatch = text.contains(gpKeyword.lowercase()) || href.contains(gpKeyword.lowercase())
+                    val isNew = seenHrefs.add(href) // add() returns true if not already present
+                    isMatch && isNew
                 }
                 .take(4)
 
@@ -335,6 +339,7 @@ object Scraper {
             emptyMap()
         }
     }
+
 
     private fun extractResultsFromHtml(doc: org.jsoup.nodes.Document, results: MutableMap<String, List<SessionResult>>) {
         val tables = doc.select("table")
@@ -358,28 +363,49 @@ object Scraper {
             val parsed = mutableListOf<SessionResult>()
             val dataStartIdx = if (rows.size > 2 && rows[1].text().lowercase().contains("pos")) 2 else 1
             for (i in dataStartIdx until rows.size) {
-                val row = rows[i]; val cells = row.select("td")
+                val row = rows[i]
+                val cells = row.select("td")
                 if (cells.size < 4) continue
                 val colCount = cells.size
-                val riderStartIdx = if (colCount >= 8) 2 else 1
-                val teamIdx = riderStartIdx + 2
+
+                // Different table layouts:
+                // Practice (6 cols): [0]pos [1]arrow [2]rider [3]nat [4]team [5]time
+                // FP1/Q2/Sprint (7 cols): [0]pos [1]rider [2]nat [3]team [4]time [5]lap [6]speed
+                // Sprint (5 cols): [0]pos [1]rider [2]nat [3]team [4]time
+                // Saturday (8 cols): [0]pos [1]arrow [2]rider [3]nat [4]team [5]time [6]lap [7]speed
+                val riderIdx: Int
+                val teamIdx: Int
+                when {
+                    sessionKey == "Practice" || colCount >= 8 -> {
+                        riderIdx = 2
+                        teamIdx = 4
+                    }
+                    else -> {
+                        riderIdx = 1
+                        teamIdx = 3
+                    }
+                }
+
                 val pos = cells[0].text().trim().toIntOrNull() ?: continue
-                val riderName = cells[riderStartIdx].text().trim()
+                val riderName = cells[riderIdx].text().trim()
                 if (riderName.length < 2) continue
                 val team = cells[teamIdx].text().trim().substringBefore("(").trim()
+
+                // Find time column (last column with time pattern, excluding speed/lap)
                 var time = ""
                 for (ci in colCount - 1 downTo 0) {
+                    if (ci == riderIdx || ci == teamIdx) continue
                     val t = cells[ci].text().trim()
                     if (t.matches(Regex("""[\d'+].*""")) && !t.matches(Regex("""\d{3,4}k""")) && !t.matches(Regex("""\d+/\d+"""))) {
                         time = t; break
                     }
                 }
+
                 parsed.add(SessionResult(pos, riderName, team, time))
             }
             if (parsed.isNotEmpty()) results[sessionKey] = parsed
         }
     }
-
     // ─── CIRCUIT RECORDS (SPOTVNOW) ───────────────────────────
 
     /**
