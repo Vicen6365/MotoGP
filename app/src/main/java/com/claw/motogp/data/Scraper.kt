@@ -9,6 +9,7 @@ import java.util.Locale
 object Scraper {
     private const val SCHEDULE_URL = "https://www.autosport.com/motogp/schedule/2026/"
     private const val STANDINGS_URL = "https://www.motorsport.com/motogp/standings/2026/"
+    private const val RECORDS_URL = "https://www.spotvnow.com/read/from-assen-to-sepang-all-time-lap-records-at-motogp-2026-circuits/"
     private const val TIMEOUT = 10000
 
     private val dateFormats = listOf(
@@ -38,12 +39,10 @@ object Scraper {
                 val eDay = endParts[0].replace("rd","").replace("th","").replace("st","").replace("nd","")
                 val eMonth = endParts.getOrElse(1) { dateParts[1] }.take(3)
                 val end = sdf.parse("$eDay $eMonth $year") ?: continue
-                // Extend end by 3 days for race weekend
                 val cal = java.util.Calendar.getInstance().apply { time = end; add(java.util.Calendar.DAY_OF_MONTH, 3) }
                 if (now.after(start) && now.before(cal.time)) return i
             } catch (_: Exception) {}
         }
-        // If no current, find the next one
         for ((i, gp) in calendars.withIndex()) {
             if (!gp.isCompleted) return i
         }
@@ -103,7 +102,6 @@ object Scraper {
             "Circuit Ricardo Tormo"
         )
 
-        // Parse dates from text
         val datePattern = Regex("(\\d{1,2}\\s+(Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec))")
         val raceDayPattern = Regex("(\\d{1,2}\\s+(?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec))\\s+\\d{1,2}:\\d{2}")
 
@@ -148,7 +146,6 @@ object Scraper {
     }
 
     fun fetchWeekendSchedule(gpName: String): WeekendGP {
-        // Always start from default sessions (never lose Friday sessions)
         val baseSessions = getDefaultSessions().toMutableList()
         val sessionKeys = listOf("FREE PRACTICE 1", "PRACTICE", "FREE PRACTICE 2",
             "QUALIFYING 1", "QUALIFYING 2", "SPRINT", "WARM UP", "RACE")
@@ -157,7 +154,6 @@ object Scraper {
             val doc = Jsoup.connect(SCHEDULE_URL).timeout(TIMEOUT).get()
             val text = doc.body().text()
 
-            // Update times from scrape, but NEVER remove sessions
             for ((i, key) in sessionKeys.withIndex()) {
                 val idx = i
                 val matcher = Regex("$key[^\\d]*(\\d{1,2}\\s+(?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec))[^\\d]*(\\d{1,2}:\\d{2})").find(text)
@@ -169,14 +165,10 @@ object Scraper {
                     )
                 }
             }
-        } catch (_: Exception) {
-            // Scrape failed, default sessions are already set
-        }
+        } catch (_: Exception) {}
 
-        // Mark completed sessions (yesterday's sessions are completed)
         val now = java.util.Calendar.getInstance()
         for ((i, s) in baseSessions.withIndex()) {
-            // Simple completion logic: if the date is before today, it's done
             if (s.date.isNotEmpty()) {
                 try {
                     val sdf = SimpleDateFormat("d MMM yyyy", Locale.US)
@@ -252,7 +244,6 @@ object Scraper {
 
         val text = doc.body().text()
 
-        // Parse rider standings from table
         val riderPattern = Regex("(\\d+)\\s+([A-Z]\\.\\s*[A-Za-zÀ-ÿ]+)\\s*([A-Za-zÀ-ÿ0-9\\s]+?)\\s+(\\d{2,3})")
         var pos = 1
         for (match in riderPattern.findAll(text)) {
@@ -265,10 +256,8 @@ object Scraper {
             }
         }
 
-        // If parsing failed, use hardcoded data
         if (riders.isEmpty()) return Pair(getHardcodedRiders(), getHardcodedManufacturers())
 
-        // Parse manufacturers from remaining text
         val manuPattern = Regex("(Aprilia|Ducati|KTM|Honda|Yamaha)(?:.*?)(\\d{2,3})")
         for (match in manuPattern.findAll(text)) {
             val mfr = match.groupValues[1]
@@ -371,8 +360,90 @@ object Scraper {
         return rows
     }
 
+    // ─── CIRCUIT RECORDS (SPOTVNOW) ───────────────────────────
+
+    /**
+     * Fetches the latest all-time circuit lap records from SPOTVNOW.
+     * Returns a map of circuit name -> CircuitRecord.
+     * Falls back to empty map on failure.
+     */
+    fun fetchCircuitRecords(): Map<String, CircuitRecord> {
+        return try {
+            val doc = Jsoup.connect(RECORDS_URL).timeout(TIMEOUT).get()
+            parseCircuitRecords(doc)
+        } catch (e: Exception) {
+            emptyMap()
+        }
+    }
+
+    fun parseCircuitRecords(doc: Document): Map<String, CircuitRecord> {
+        val records = mutableMapOf<String, CircuitRecord>()
+
+        // Get the main article text
+        val text = doc.body().text()
+
+        // SPOTVNOW article has records in text like:
+        // "Thailand GP Chang International Circuit 1:28.700 Francesco Bagnaia Ducati 2024"
+        // Each GP block has: GP name, Circuit name, Lap time, Rider, Manufacturer, Year
+
+        // Map SPOTVNOW GP names to our circuit names
+        val gpToCircuit = mapOf(
+            "Thailand GP" to "Chang International Circuit",
+            "Brazilian GP" to "Autódromo Internacional Ayrton Senna",
+            "Grand Prix of the Americas" to "Circuit of the Americas",
+            "Spanish GP" to "Circuito de Jerez - Ángel Nieto",
+            "French GP" to "Bugatti Circuit (Le Mans)",
+            "Catalan GP" to "Circuit de Barcelona-Catalunya",
+            "Italian GP" to "Mugello Circuit",
+            "Hungarian GP" to "Balaton Park Circuit",
+            "Czech Republic GP" to "Automotodrom Brno",
+            "Dutch TT" to "TT Circuit Assen",
+            "German GP" to "Sachsenring",
+            "British GP" to "Silverstone Circuit",
+            "Aragon GP" to "MotorLand Aragón",
+            "San Marino and Rimini Riviera GP" to "Misano World Circuit",
+            "Austrian GP" to "Red Bull Ring",
+            "Japanese GP" to "Mobility Resort Motegi",
+            "Indonesian GP" to "Pertamina Mandalika International Street Circuit",
+            "Australian GP" to "Phillip Island Grand Prix Circuit",
+            "Malaysian GP" to "Sepang International Circuit",
+            "Qatar GP" to "Lusail International Circuit",
+            "Portuguese GP" to "Autódromo Internacional do Algarve",
+            "Valencian GP" to "Circuit Ricardo Tormo"
+        )
+
+        // Parse records: look for GP name followed by circuit name, time, rider, year
+        for ((gpName, circuitName) in gpToCircuit) {
+            try {
+                // Find this GP's block in the text
+                val idx = text.indexOf(gpName)
+                if (idx < 0) continue
+
+                val block = text.substring(idx, (idx + 300).coerceAtMost(text.length))
+
+                // Extract lap time: patterns like "1:28.700" or "1'25.440"
+                val timeMatch = Regex("""(\d[':]\d+\.\d{3})""").find(block)
+                // Extract year: a 4-digit year near the end
+                val yearMatch = Regex("""\b(19\d{2}|20\d{2})\b""").find(block.let { b ->
+                    // Look for year AFTER the time
+                    if (timeMatch != null) b.substring(timeMatch.range.last)
+                    else b
+                })
+                // Extract rider name - capitalized names with possible special chars
+                val riderMatch = Regex("""(?:\d+'?\d+\.\d{3}\s+)([A-Z][a-zÀ-ÿéèêë]+(?:\s+[A-Z][a-zÀ-ÿéèêë]+)+)""").find(block)
+
+                val lapTime = timeMatch?.value?.replace("'", "'") ?: continue
+                val year = yearMatch?.value ?: continue
+                val rider = riderMatch?.groupValues?.get(1)?.trim() ?: continue
+
+                records[circuitName] = CircuitRecord(lapTime, rider, year)
+            } catch (_: Exception) { continue }
+        }
+
+        return records
+    }
+
     private fun getHardcodedSessionResults(): Map<String, List<SessionResult>> {
-        // 22 pilotos MotoGP 2026 ordenados por clasificación
         val allRiders = listOf(
             "M. Bezzecchi" to "Aprilia Racing",
             "J. Martin" to "Aprilia Racing",
@@ -406,7 +477,6 @@ object Scraper {
             }
         }
 
-        // Gaps progresivos por sesión (cada posición añade más gap)
         val progressiveGaps = listOf(0.0, 0.023, 0.045, 0.068, 0.092, 0.118, 0.146, 0.176, 0.208, 0.242,
             0.278, 0.316, 0.356, 0.398, 0.442, 0.488, 0.536, 0.586, 0.638, 0.692, 0.748, 0.806)
 
@@ -416,7 +486,6 @@ object Scraper {
         val q2Times = genTimes("1'38.068s", progressiveGaps)
         val q1Times = genTimes("1'38.752s", progressiveGaps)
 
-        // Race: times completo
         fun raceTime(pos: Int): String = when (pos) {
             1 -> "41'05.234"
             2 -> "+2.345"
@@ -474,7 +543,6 @@ object Scraper {
                 SessionResult(i + 1, rider, team, times[i])
             }
 
-        // Q: solo pasa Q2 si pos <= 12, sino Q1
         fun q2Grid(): List<SessionResult> =
             allRiders.take(12).mapIndexed { i, (rider, team) ->
                 SessionResult(i + 1, rider, team, q2Times[i])
@@ -504,7 +572,6 @@ object Scraper {
     }
 
     fun computeRiderHistory(standings: List<RiderStanding>): List<RiderHistory> {
-        // Simplified: return current points as single data point
         return standings.take(5).map { RiderHistory(it.rider, listOf(it.points)) }
     }
 
@@ -570,7 +637,6 @@ object Scraper {
             val doc = Jsoup.connect(NEWS_URL).timeout(TIMEOUT).get()
             parseNews(doc)
         } catch (e: Exception) {
-            // No fallback to English autosport — solo contenido en español
             getHardcodedNews()
         }
     }
@@ -578,7 +644,6 @@ object Scraper {
     fun parseNews(doc: Document): List<NewsArticle> {
         val articles = mutableListOf<NewsArticle>()
 
-        // Try motorsport.com/es structure
         val newsItems = doc.select("article, .ms-item, .news-item, [class*=article], [data-testid*=article]")
         if (newsItems.isNotEmpty()) {
             for (block in newsItems.take(30)) {
@@ -602,7 +667,6 @@ object Scraper {
             }
         }
 
-        // Fallback: generic link scraping
         if (articles.isEmpty()) {
             val links = doc.select("a[href]")
             for (link in links.take(40)) {

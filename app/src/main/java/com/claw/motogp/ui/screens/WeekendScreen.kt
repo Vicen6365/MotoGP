@@ -139,13 +139,29 @@ fun WeekendScreen() {
                         colors = CardDefaults.cardColors(containerColor = MotoGPSurface),
                         shape = RoundedCornerShape(12.dp)
                     ) {
-                        Row(
-                            Modifier.padding(14.dp).fillMaxWidth(),
-                            horizontalArrangement = Arrangement.SpaceBetween
+                        Column(
+                            Modifier.padding(14.dp).fillMaxWidth()
                         ) {
-                            Text("🏁 ${weekend!!.circuit.ifEmpty { weekend!!.name }}",
-                                color = MotoGPTextSecondary, fontSize = 14.sp, fontWeight = FontWeight.Bold)
-                            Text("CEST 🇪🇸", color = MotoGPRed, fontSize = 13.sp, fontWeight = FontWeight.Bold)
+                            Row(
+                                Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.SpaceBetween,
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Text("🏁 ${weekend!!.circuit.ifEmpty { weekend!!.name }}",
+                                    color = MotoGPTextSecondary, fontSize = 14.sp, fontWeight = FontWeight.Bold)
+                                Text("CEST 🇪🇸", color = MotoGPRed, fontSize = 13.sp, fontWeight = FontWeight.Bold)
+                            }
+                            // Check if this GP is this weekend
+                            val isThisWeekend = calendar.getOrNull(Scraper.getCurrentWeekend(calendar))?.name == weekend?.name
+                            if (isThisWeekend) {
+                                Spacer(Modifier.height(6.dp))
+                                Row(verticalAlignment = Alignment.CenterVertically) {
+                                    Text("●", color = MotoGPSuccess, fontSize = 10.sp)
+                                    Spacer(Modifier.width(6.dp))
+                                    Text("EN DIRECTO · Fin de semana de carreras",
+                                        color = MotoGPSuccess, fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                                }
+                            }
                         }
                     }
                 }

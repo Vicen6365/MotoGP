@@ -3,11 +3,11 @@ package com.claw.motogp.data
 import com.claw.motogp.R
 
 data class Session(
-    val name: String,       // ej: "Free Practice 1", "Qualifying 1", "Race"
-    val shortName: String,  // ej: "FP1", "Q1", "RACE"
-    val day: String,        // ej: "Viernes", "Sábado", "Domingo"
-    val date: String,       // ej: "16 May"
-    val time: String,       // ej: "10:45"
+    val name: String,
+    val shortName: String,
+    val day: String,
+    val date: String,
+    val time: String,
     val isCompleted: Boolean = false
 )
 
@@ -18,7 +18,7 @@ data class WeekendGP(
     val dateRange: String,
     val isCurrent: Boolean = false,
     val sessions: List<Session> = emptyList(),
-    val sessionResults: Map<String, List<SessionResult>> = emptyMap() // shortName -> results
+    val sessionResults: Map<String, List<SessionResult>> = emptyMap()
 )
 
 data class SessionResult(
@@ -53,7 +53,7 @@ data class ManufacturerStanding(
 data class ChampionshipInfo(
     val totalRounds: Int = 22,
     val completedRounds: Int,
-    val pointsPerRaceWin: Int = 37,  // 25 race + 12 sprint
+    val pointsPerRaceWin: Int = 37,
     val raceWinPoints: Int = 25,
     val sprintWinPoints: Int = 12,
     val totalPointsAvailable: Int,
@@ -62,7 +62,7 @@ data class ChampionshipInfo(
     companion object {
         fun calculate(completedRounds: Int): ChampionshipInfo {
             val totalRounds = 22
-            val perRound = 37  // 25 race + 12 sprint
+            val perRound = 37
             val total = totalRounds * perRound
             val remaining = (totalRounds - completedRounds) * perRound
             return ChampionshipInfo(
@@ -84,7 +84,6 @@ data class CalendarEvent(
     val round: Int
 )
 
-// Series history for evolution chart
 data class RiderHistory(
     val rider: String,
     val pointsByRound: List<Int>
@@ -95,7 +94,6 @@ data class ManufacturerHistory(
     val pointsByRound: List<Int>
 )
 
-// News
 data class NewsArticle(
     val title: String,
     val snippet: String,
@@ -104,14 +102,12 @@ data class NewsArticle(
     val date: String
 )
 
-// Session definition for calendar (FP1, Practice, Q1, Q2, Sprint, Race)
 data class CalendarSession(
     val shortName: String,
     val fullName: String,
-    val time: String // HH:MM format
+    val time: String
 )
 
-// Circuit info for the circuits tab
 data class CircuitInfo(
     val name: String,
     val gpName: String,
@@ -127,144 +123,164 @@ data class CircuitInfo(
     val description: String
 )
 
+data class CircuitRecord(val lap: String, val holder: String, val year: String)
+
 object CircuitData {
+    // Mutable store for dynamically updated circuit records
+    val updatedRecords = mutableMapOf<String, CircuitRecord>()
+
+    fun getRecord(circuitName: String): Triple<String, String, String> {
+        val updated = updatedRecords[circuitName]
+        if (updated != null) return Triple(updated.lap, updated.holder, updated.year)
+        // Fall back to hardcoded
+        val circuit = circuits.find { it.name == circuitName } ?: return Triple("—", "—", "—")
+        return Triple(circuit.recordLap, circuit.recordHolder, circuit.recordYear)
+    }
+
     val circuits: List<CircuitInfo> = listOf(
         CircuitInfo("Chang International Circuit",
             "Thailand GP", "Tailandia", "🇹🇭",
             "4.554 km", 12, "Mixto",
-            "1'29.715", "J. Martin", "2025",
+            "1'28.700", "F. Bagnaia", "2024",
             R.drawable.circuit_thailand,
             "Circuito moderno con curvas variadas y rectas largas. El calor extremo es un factor clave."),
-        CircuitInfo("Autódromo Termas de Río Hondo",
-            "Brazil GP", "Argentina", "🇦🇷",
-            "4.805 km", 14, "Rápido",
-            "1'37.569", "M. Marquez", "2014",
+        CircuitInfo("Autódromo Internacional Ayrton Senna",
+            "Brazil GP", "Brasil", "🇧🇷",
+            "—", 17, "Mixto",
+            "1'25.440", "W. Rainey (500cc)", "1989",
             R.drawable.circuit_argentina,
-            "Trazado fluido con curvas enlazadas. Favorito de los pilotos por su fluidez."),
+            "Vuelve al calendario en 2026. Último GP en 1989. Trazado clásico brasileño."),
         CircuitInfo("Circuit of the Americas",
             "Americas GP", "EE.UU.", "🇺🇸",
             "5.513 km", 20, "Técnico",
-            "2'03.025", "F. Bagnaia", "2025",
+            "2'00.864", "M. Viñales", "2024",
             R.drawable.circuit_americas,
             "Circuito con la subida más pronunciada de MotoGP. Curvas muy variadas."),
         CircuitInfo("Circuito de Jerez - Ángel Nieto",
             "Spanish GP", "España", "🇪🇸",
             "4.423 km", 13, "Mixto",
-            "1'36.993", "P. Acosta", "2025",
+            "1'35.610", "F. Quartararo", "2025",
             R.drawable.circuit_jerez,
             "Circuito histórico con la famosa curva 'Dry Sack'. Ambiente único."),
         CircuitInfo("Bugatti Circuit (Le Mans)",
             "French GP", "Francia", "🇫🇷",
             "4.185 km", 14, "Stop & Go",
-            "1'31.247", "J. Martin", "2024",
+            "1'29.324", "F. Quartararo", "2025",
             R.drawable.circuit_lemans,
             "Alternancia de rectas largas y curvas lentas. Frenada crítica."),
         CircuitInfo("Circuit de Barcelona-Catalunya",
             "Catalan GP", "España", "🇪🇸",
             "4.657 km", 14, "Mixto",
-            "1'38.069", "P. Acosta", "2026",
+            "1'37.536", "A. Marquez", "2025",
             R.drawable.circuit_catalunya,
             "Circuito polivalente con curvas de media y alta velocidad. Muy usado para test."),
         CircuitInfo("Mugello Circuit",
             "Italian GP", "Italia", "🇮🇹",
             "5.245 km", 15, "Rápido",
-            "1'44.470", "F. Bagnaia", "2025",
+            "1'44.169", "M. Marquez", "2025",
             R.drawable.circuit_mugello,
             "Trazado de alta velocidad. Recta larguísima de más de 1 km."),
         CircuitInfo("Balaton Park Circuit",
             "Hungarian GP", "Hungría", "🇭🇺",
             "4.547 km", 15, "Técnico",
-            "—", "—", "—",
+            "1'36.518", "M. Marquez", "2025",
             R.drawable.circuit_hungary,
             "Nuevo circuito en 2026. Diseño moderno con curvas técnicas al lado del lago Balaton."),
         CircuitInfo("TT Circuit Assen",
             "Dutch GP", "Países Bajos", "🇳🇱",
             "4.542 km", 18, "Fluido",
-            "1'33.101", "F. Quartararo", "2022",
+            "1'30.540", "F. Bagnaia", "2024",
             R.drawable.circuit_assen,
             "La 'Catedral' del motociclismo. Curvas rápidas y peralte natural."),
         CircuitInfo("Sachsenring",
             "German GP", "Alemania", "🇩🇪",
             "3.671 km", 13, "Técnico",
-            "1'20.113", "J. Martin", "2025",
+            "1'19.071", "F. Di Giannantonio", "2025",
             R.drawable.circuit_sachsenring,
             "El circuito más corto de MotoGP. Curva a izquierdas Waterfall muy famosa."),
         CircuitInfo("Silverstone Circuit",
             "British GP", "Reino Unido", "🇬🇧",
             "5.900 km", 18, "Rápido",
-            "1'58.095", "M. Marquez", "2019",
+            "1'57.233", "F. Quartararo", "2025",
             R.drawable.circuit_silverstone,
             "El circuito más largo del calendario. Curvas de alta velocidad."),
         CircuitInfo("Red Bull Ring",
             "Austrian GP", "Austria", "🇦🇹",
             "4.318 km", 10, "Stop & Go",
-            "1'22.913", "J. Martin", "2025",
+            "1'27.748", "J. Martin", "2024",
             R.drawable.circuit_austria,
             "Pocas curvas pero muy intensas. Grandes rectas con cambios de elevación."),
-        CircuitInfo("Motorland Aragón",
+        CircuitInfo("MotorLand Aragón",
             "Aragon GP", "España", "🇪🇸",
             "5.078 km", 17, "Mixto",
-            "1'46.196", "M. Marquez", "2024",
+            "1'45.704", "M. Marquez", "2025",
             R.drawable.circuit_aragon,
             "Diseño moderno con curvas de todos los tipos. Cuenta con puente."),
         CircuitInfo("Misano World Circuit",
             "San Marino GP", "Italia", "🇮🇹",
             "4.226 km", 16, "Mixto",
-            "1'30.700", "J. Martin", "2025",
+            "1'30.031", "F. Bagnaia", "2024",
             R.drawable.circuit_misano,
             "Cerca de la costa adriática. Curvas técnicas con una zona muy rápida."),
         CircuitInfo("Mobility Resort Motegi",
             "Japanese GP", "Japón", "🇯🇵",
             "4.801 km", 14, "Mixto",
-            "1'44.116", "P. Acosta", "2025",
+            "1'42.911", "F. Bagnaia", "2025",
             R.drawable.circuit_motegi,
             "Circuito japonés con curvas muy técnicas. Zona de bosque."),
-        CircuitInfo("Mandalika International Street Circuit",
+        CircuitInfo("Pertamina Mandalika International Street Circuit",
             "Indonesian GP", "Indonesia", "🇮🇩",
             "4.301 km", 17, "Rápido",
-            "1'30.170", "J. Martin", "2024",
+            "1'28.832", "M. Bezzecchi", "2025",
             R.drawable.circuit_mandalika,
             "Circuito callejero junto a la playa. Muy rápido con curvas abiertas."),
         CircuitInfo("Phillip Island Grand Prix Circuit",
             "Australian GP", "Australia", "🇦🇺",
             "4.448 km", 12, "Rápido",
-            "1'28.246", "F. Bagnaia", "2024",
+            "1'26.465", "F. Quartararo", "2025",
             R.drawable.circuit_phillip_island,
             "Curvas rápidas en sentido antihorario. Viento y frío factor clave."),
         CircuitInfo("Sepang International Circuit",
             "Malaysian GP", "Malasia", "🇲🇾",
             "5.543 km", 15, "Mixto",
-            "1'57.783", "J. Martin", "2025",
+            "1'56.337", "F. Bagnaia", "2024",
             R.drawable.circuit_sepang,
             "Ancho y largo circuito. Calor y humedad extremos."),
         CircuitInfo("Lusail International Circuit",
             "Qatar GP", "Qatar", "🇶🇦",
             "5.380 km", 16, "Stop & Go",
-            "1'52.637", "F. Bagnaia", "2025",
+            "1'50.499", "M. Marquez", "2025",
             R.drawable.circuit_qatar,
             "Carrera nocturna con focos. Arena y curvas anchas."),
         CircuitInfo("Autódromo Internacional do Algarve",
             "Portuguese GP", "Portugal", "🇵🇹",
             "4.653 km", 15, "Mixto",
-            "1'39.555", "J. Mir", "2021",
+            "1'37.226", "M. Marquez", "2023",
             R.drawable.circuit_portimao,
             "Desniveles y curvas ciegas. Una de las subidas más bestias del calendario."),
         CircuitInfo("Circuit Ricardo Tormo",
             "Valencia GP", "España", "🇪🇸",
             "4.005 km", 14, "Técnico",
-            "1'29.699", "B. Binder", "2025",
+            "1'28.809", "M. Bezzecchi", "2025",
             R.drawable.circuit_valencia,
             "Circuito urbano lento y técnico. Cierre de temporada. Aprieta las tuercas."),
         CircuitInfo("Automotodrom Brno",
             "Czech GP", "República Checa", "🇨🇿",
             "5.403 km", 14, "Fluido",
-            "1'55.454", "J. Martin", "2025",
+            "1'52.303", "F. Bagnaia", "2025",
             R.drawable.circuit_brno,
             "Trazado natural con grandes cambios de elevación. Curvas a ciegas.")
     )
+
+    /** Look up a circuit name by GP name keywords */
+    fun findByGpName(gpName: String): CircuitInfo? {
+        val kw = gpName.lowercase().take(6)
+        return circuits.find {
+            it.gpName.lowercase().contains(kw) || it.name.lowercase().contains(kw)
+        }
+    }
 }
 
-// All GP sessions with standard times
 object GpSessions {
     val all = listOf(
         CalendarSession("FP1", "Entrenos Libres 1", "10:45"),
