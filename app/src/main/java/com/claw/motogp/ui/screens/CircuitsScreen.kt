@@ -177,10 +177,6 @@ fun CircuitDetailDialog(circuit: CircuitInfo, onDismiss: () -> Unit) {
     val displayHolder = liveRecord?.holder ?: circuit.recordHolder
     val displayYear = liveRecord?.year ?: circuit.recordYear
 
-    var isRefreshing by remember { mutableStateOf(false) }
-    var refreshMsg by remember { mutableStateOf("") }
-    val scope = rememberCoroutineScope()
-
     Dialog(
         onDismissRequest = onDismiss,
         properties = DialogProperties(usePlatformDefaultWidth = false)
@@ -292,51 +288,18 @@ fun CircuitDetailDialog(circuit: CircuitInfo, onDismiss: () -> Unit) {
 
                 Spacer(Modifier.height(12.dp))
 
-                // Refresh button for this circuit's record
+                // Close button at bottom
                 Row(
                     Modifier.fillMaxWidth().padding(horizontal = 16.dp),
                     horizontalArrangement = Arrangement.Center
                 ) {
                     Button(
-                        onClick = {
-                            isRefreshing = true
-                            refreshMsg = ""
-                            scope.launch {
-                                try {
-                                    val records = withContext(Dispatchers.IO) {
-                                        Scraper.fetchCircuitRecords()
-                                    }
-                                    if (records.isEmpty()) {
-                                        refreshMsg = "No se pudo obtener el récord"
-                                    } else if (records.containsKey(circuit.name)) {
-                                        CircuitData.updatedRecords[circuit.name] = records[circuit.name]!!
-                                        refreshMsg = "✓ Récord actualizado"
-                                    } else {
-                                        refreshMsg = "Circuito no encontrado en la fuente"
-                                    }
-                                } catch (e: Exception) {
-                                    refreshMsg = "Error de conexión"
-                                } finally {
-                                    isRefreshing = false
-                                }
-                            }
-                        },
-                        enabled = !isRefreshing,
+                        onClick = onDismiss,
                         colors = ButtonDefaults.buttonColors(containerColor = MotoGPRed),
                         modifier = Modifier.height(36.dp)
                     ) {
-                        Text(
-                            if (isRefreshing) "↻ Actualizando..." else "↻ Actualizar récord",
-                            color = Color.White, fontSize = 13.sp
-                        )
+                        Text("Cerrar", color = Color.White, fontSize = 13.sp)
                     }
-                }
-
-                if (refreshMsg.isNotEmpty()) {
-                    Text(refreshMsg,
-                        color = if (refreshMsg.startsWith("✓")) MotoGPSuccess else MotoGPAccent,
-                        fontSize = 12.sp,
-                        modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp))
                 }
             }
         }

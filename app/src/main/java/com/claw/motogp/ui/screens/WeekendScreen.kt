@@ -64,16 +64,7 @@ fun WeekendScreen() {
 
     // Session detail dialog
     if (selectedSession != null && weekend != null) {
-        SessionDetailDialog2(selectedSession!!, weekend!!, onDismiss = { selectedSession = null },
-            onRefresh = { session ->
-                scope.launch {
-                    val results = withContext(Dispatchers.IO) {
-                        Scraper.fetchSessionResults(weekend!!.name)
-                    }
-                    weekend = weekend!!.copy(sessionResults = results)
-                }
-            }
-        )
+        SessionDetailDialog2(selectedSession!!, weekend!!, onDismiss = { selectedSession = null })
     }
 
     Column(
@@ -275,10 +266,8 @@ fun SessionCard(session: Session, onClick: () -> Unit) {
 fun SessionDetailDialog2(
     session: Session,
     weekend: WeekendGP,
-    onDismiss: () -> Unit,
-    onRefresh: (Session) -> Unit
+    onDismiss: () -> Unit
 ) {
-    var isRefreshing by remember { mutableStateOf(false) }
     val sessionColor = when {
         session.shortName.contains("FP", true) || session.shortName == "Practice" -> ColorPractice
         session.shortName.startsWith("Q", true) -> ColorQualifying
@@ -339,15 +328,7 @@ fun SessionDetailDialog2(
                         .verticalScroll(rememberScrollState())
                         .padding(horizontal = 16.dp, vertical = 12.dp)
                 ) {
-                    if (isRefreshing) {
-                        Box(Modifier.fillMaxWidth().height(120.dp), contentAlignment = Alignment.Center) {
-                            Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                                CircularProgressIndicator(color = MotoGPRed, modifier = Modifier.size(28.dp))
-                                Spacer(Modifier.height(10.dp))
-                                Text("Actualizando...", color = MotoGPTextMuted, fontSize = 13.sp)
-                            }
-                        }
-                    } else if (displayedResults.isEmpty()) {
+                    if (displayedResults.isEmpty()) {
                         // Empty state: session not yet run
                         Box(Modifier.fillMaxWidth().padding(vertical = 40.dp), contentAlignment = Alignment.Center) {
                             Column(horizontalAlignment = Alignment.CenterHorizontally) {
@@ -360,10 +341,6 @@ fun SessionDetailDialog2(
                                 Text("La sesión aún no se ha celebrado o los resultados no están disponibles.",
                                     color = MotoGPTextSecondary, fontSize = 13.sp,
                                     textAlign = TextAlign.Center)
-                                Spacer(Modifier.height(8.dp))
-                                Text("Prueba a tocar ↻ Actualizar después de que termine la sesión.",
-                                    color = MotoGPTextMuted, fontSize = 12.sp,
-                                    textAlign = TextAlign.Center)
                             }
                         }
                     } else {
@@ -372,21 +349,11 @@ fun SessionDetailDialog2(
 
                     Spacer(Modifier.height(8.dp))
 
-                    // Refresh + Close buttons at bottom
+                    // Close button at bottom
                     Row(
                         Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.SpaceEvenly
+                        horizontalArrangement = Arrangement.Center
                     ) {
-                        Button(
-                            onClick = {
-                                isRefreshing = true
-                                onRefresh(session)
-                            },
-                            colors = ButtonDefaults.buttonColors(containerColor = MotoGPRed),
-                            enabled = !isRefreshing
-                        ) {
-                            Text("↻ Actualizar", color = Color.White)
-                        }
                         OutlinedButton(
                             onClick = onDismiss,
                             colors = ButtonDefaults.outlinedButtonColors(contentColor = MotoGPTextMuted)
