@@ -10,6 +10,7 @@ import androidx.compose.material.icons.filled.CalendarMonth
 import androidx.compose.material.icons.filled.EmojiEvents
 import androidx.compose.material.icons.filled.FlagCircle
 import androidx.compose.material.icons.filled.List
+import androidx.compose.material.icons.filled.Place
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
@@ -19,6 +20,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.claw.motogp.ui.screens.CalendarScreen
+import com.claw.motogp.ui.screens.CircuitsScreen
 import com.claw.motogp.ui.screens.NewsScreen
 import com.claw.motogp.ui.screens.StandingsScreen
 import com.claw.motogp.ui.screens.WeekendScreen
@@ -52,6 +54,7 @@ fun MotoGPApp() {
         NavItem("Finde", Icons.Filled.FlagCircle),
         NavItem("Clasif.", Icons.Filled.EmojiEvents),
         NavItem("Noticias", Icons.Filled.List),
+        NavItem("Circuitos", Icons.Filled.Place),
         NavItem("Calendario", Icons.Filled.CalendarMonth)
     )
 
@@ -101,7 +104,8 @@ fun MotoGPApp() {
                 0 -> WeekendScreen()
                 1 -> StandingsScreen()
                 2 -> NewsScreen()
-                3 -> CalendarScreen()
+                3 -> CircuitsScreen()
+                4 -> CalendarScreen()
             }
         }
     }
