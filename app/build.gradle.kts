@@ -51,8 +51,5 @@ dependencies {
     // Google Calendar intents
     implementation("com.google.android.gms:play-services-location:21.2.0")
 
-    // Coil for image loading (circuit maps)
-    implementation("io.coil-kt:coil-compose:2.6.0")
-
     debugImplementation("androidx.compose.ui:ui-tooling")
 }

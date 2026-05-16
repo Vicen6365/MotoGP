@@ -1,5 +1,6 @@
 package com.claw.motogp.ui.screens
 
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
@@ -22,7 +23,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
-import coil.compose.AsyncImage
+import androidx.compose.ui.res.painterResource
 import com.claw.motogp.data.CircuitData
 import com.claw.motogp.data.CircuitInfo
 import com.claw.motogp.ui.theme.*
@@ -163,8 +164,8 @@ fun CircuitDetailDialog(circuit: CircuitInfo, onDismiss: () -> Unit) {
                         .background(MotoGPSurfaceVariant),
                     contentAlignment = Alignment.Center
                 ) {
-                    AsyncImage(
-                        model = circuit.mapUrl,
+                    Image(
+                        painter = painterResource(id = circuit.mapResId),
                         contentDescription = "${circuit.name} track map",
                         modifier = Modifier.fillMaxWidth().heightIn(max = 300.dp),
                         contentScale = ContentScale.Fit
