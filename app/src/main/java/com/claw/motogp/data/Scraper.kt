@@ -147,38 +147,52 @@ object Scraper {
 
     fun fetchWeekendSchedule(gpName: String): WeekendGP {
         val baseSessions = getDefaultSessions().toMutableList()
-        val sessionKeys = listOf("FREE PRACTICE 1", "PRACTICE", "FREE PRACTICE 2",
-            "QUALIFYING 1", "QUALIFYING 2", "SPRINT", "WARM UP", "RACE")
+        val raceOrder = listOf(
+            "Thailand GP" to "2026-03-01", "Brazil GP" to "2026-03-22",
+            "Americas GP" to "2026-03-29", "Spanish GP" to "2026-04-26",
+            "French GP" to "2026-05-10", "Catalan GP" to "2026-05-17",
+            "Italian GP" to "2026-05-31", "Hungarian GP" to "2026-06-07",
+            "Czech GP" to "2026-06-21", "Dutch GP" to "2026-06-28",
+            "German GP" to "2026-07-12", "British GP" to "2026-08-09",
+            "Aragon GP" to "2026-08-30", "San Marino GP" to "2026-09-13",
+            "Austrian GP" to "2026-09-20", "Japanese GP" to "2026-10-04",
+            "Indonesian GP" to "2026-10-11", "Australian GP" to "2026-10-25",
+            "Malaysian GP" to "2026-11-01", "Qatar GP" to "2026-11-08",
+            "Portuguese GP" to "2026-11-22", "Valencia GP" to "2026-11-29"
+        )
+        
+        // Find race date for this GP
+        val raceDateStr = raceOrder.find { gpName.contains(it.first.split(" ")[0], ignoreCase = true) }?.second
+        if (raceDateStr != null) {
+            try {
+                val sdf = SimpleDateFormat("yyyy-MM-dd", Locale.US)
+                val raceDate = sdf.parse(raceDateStr)
+                val raceCal = java.util.Calendar.getInstance().apply { time = raceDate!! }
+                val now = java.util.Calendar.getInstance()
+                val dateFormat = SimpleDateFormat("dd MMM", Locale("es", "ES"))
 
-        try {
-            val doc = Jsoup.connect(SCHEDULE_URL).timeout(TIMEOUT).get()
-            val text = doc.body().text()
+                // Session -> day offset from race day (Sunday)
+                // Friday=-2, Saturday=-1, Sunday=0
+                val dayOffsets = listOf(-2, -2, -1, -1, -1, -1, 0, 0)
+                val dayLabels = listOf("Viernes", "Viernes", "Sábado", "Sábado", "Sábado", "Sábado", "Domingo", "Domingo")
 
-            for ((i, key) in sessionKeys.withIndex()) {
-                val idx = i
-                val matcher = Regex("$key[^\\d]*(\\d{1,2}\\s+(?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec))[^\\d]*(\\d{1,2}:\\d{2})").find(text)
-                if (matcher != null && idx < baseSessions.size) {
-                    val existing = baseSessions[idx]
-                    baseSessions[idx] = existing.copy(
-                        date = matcher.groupValues[1],
-                        time = matcher.groupValues[2]
+                for (i in baseSessions.indices) {
+                    val offset = dayOffsets.getOrElse(i) { 0 }
+                    val cal = raceCal.clone() as java.util.Calendar
+                    cal.add(java.util.Calendar.DAY_OF_MONTH, offset)
+                    val dateStr = dateFormat.format(cal.time)
+
+                    // Mark as completed if the session day is fully in the past
+                    val isCompleted = cal.before(now) &&
+                        cal.get(java.util.Calendar.DAY_OF_YEAR) != now.get(java.util.Calendar.DAY_OF_YEAR)
+
+                    baseSessions[i] = baseSessions[i].copy(
+                        day = dayLabels.getOrElse(i) { "Viernes" },
+                        date = dateStr,
+                        isCompleted = isCompleted
                     )
                 }
-            }
-        } catch (_: Exception) {}
-
-        val now = java.util.Calendar.getInstance()
-        for ((i, s) in baseSessions.withIndex()) {
-            if (s.date.isNotEmpty()) {
-                try {
-                    val sdf = SimpleDateFormat("d MMM yyyy", Locale.US)
-                    val sessionDate = sdf.parse("${s.date} 2026")
-                    val cal = java.util.Calendar.getInstance().apply { time = sessionDate!! }
-                    if (cal.before(now) && cal.get(java.util.Calendar.DAY_OF_YEAR) != now.get(java.util.Calendar.DAY_OF_YEAR)) {
-                        baseSessions[i] = s.copy(isCompleted = true)
-                    }
-                } catch (_: Exception) {}
-            }
+            } catch (_: Exception) {}
         }
 
         val circuitMap = mapOf(
@@ -206,15 +220,18 @@ object Scraper {
             "Valencia" to "Circuit Ricardo Tormo"
         )
         val circuit = circuitMap.entries.find { gpName.contains(it.key, ignoreCase = true) }?.value ?: ""
+        val dateRange = baseSessions.firstOrNull()?.date ?: ""
 
         return WeekendGP(
             name = gpName,
             circuit = circuit,
             country = "",
-            dateRange = baseSessions.firstOrNull()?.date ?: "",
+            dateRange = dateRange,
             sessions = baseSessions
         )
     }
+
+
 
     fun getDefaultSessions(): List<Session> {
         return listOf(
