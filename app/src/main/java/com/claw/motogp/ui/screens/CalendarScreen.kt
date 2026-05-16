@@ -81,6 +81,8 @@ fun CalendarScreen() {
                 verticalArrangement = Arrangement.spacedBy(6.dp)
             ) {
                 // Legend
+                val currentIndex = events.indexOfFirst { !it.isCompleted }
+
                 item {
                     Row(
                         Modifier.fillMaxWidth().padding(horizontal = 4.dp, vertical = 4.dp),
@@ -94,7 +96,7 @@ fun CalendarScreen() {
                         Row(verticalAlignment = Alignment.CenterVertically) {
                             Box(Modifier.size(10.dp).clip(RoundedCornerShape(2.dp)).background(MotoGPRed))
                             Spacer(Modifier.width(4.dp))
-                            Text("Presente", color = MotoGPTextMuted, fontSize = 11.sp)
+                            Text("Actual", color = MotoGPTextMuted, fontSize = 11.sp)
                         }
                         Row(verticalAlignment = Alignment.CenterVertically) {
                             Box(Modifier.size(10.dp).clip(RoundedCornerShape(2.dp)).background(MotoGPSurfaceVariant))
@@ -109,6 +111,7 @@ fun CalendarScreen() {
                     GpCard(
                         event = event,
                         isExpanded = isExpanded,
+                        isCurrent = i == currentIndex,
                         onToggle = { expandedGp = if (isExpanded) null else i },
                         onAddSession = { sessionName -> addSessionToCalendar(context, event, sessionName) }
                     )
@@ -122,10 +125,30 @@ fun CalendarScreen() {
 fun GpCard(
     event: CalendarEvent,
     isExpanded: Boolean,
+    isCurrent: Boolean,
     onToggle: () -> Unit,
     onAddSession: (String) -> Unit
 ) {
-    val bgColor = if (event.isCompleted) MotoGPSurface else MotoGPSurfaceVariant
+    val bgColor = when {
+        event.isCompleted -> MotoGPSurface
+        isCurrent -> MotoGPSurfaceVariant
+        else -> MotoGPSurface.copy(alpha = 0.5f)
+    }
+    val accentColor = when {
+        event.isCompleted -> MotoGPSuccess
+        isCurrent -> MotoGPRed
+        else -> MotoGPTextMuted
+    }
+    val roundBg = when {
+        event.isCompleted -> MotoGPSuccess.copy(alpha = 0.15f)
+        isCurrent -> MotoGPRed.copy(alpha = 0.15f)
+        else -> MotoGPTextMuted.copy(alpha = 0.08f)
+    }
+    val statusText = when {
+        event.isCompleted -> "✓"
+        isCurrent -> "◉"
+        else -> "▸"
+    }
 
     Card(
         modifier = Modifier.fillMaxWidth(),
@@ -143,15 +166,12 @@ fun GpCard(
                     modifier = Modifier
                         .size(36.dp)
                         .clip(RoundedCornerShape(8.dp))
-                        .background(
-                            if (event.isCompleted) MotoGPSuccess.copy(alpha = 0.15f)
-                            else MotoGPRed.copy(alpha = 0.15f)
-                        ),
+                        .background(roundBg),
                     contentAlignment = Alignment.Center
                 ) {
                     Text(
                         event.round.toString(),
-                        color = if (event.isCompleted) MotoGPSuccess else MotoGPRed,
+                        color = accentColor,
                         fontWeight = FontWeight.Bold, fontSize = 16.sp
                     )
                 }
@@ -171,9 +191,7 @@ fun GpCard(
                 }
 
                 // Status badge
-                val statusText = if (event.isCompleted) "✓" else "▾"
-                val statusColor = if (event.isCompleted) MotoGPSuccess else MotoGPRed
-                Text(statusText, color = statusColor, fontWeight = FontWeight.Bold, fontSize = 18.sp)
+                Text(statusText, color = accentColor, fontWeight = FontWeight.Bold, fontSize = 18.sp)
             }
 
             // Expanded sessions panel
