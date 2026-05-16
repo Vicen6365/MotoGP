@@ -1,7 +1,5 @@
 package com.claw.motogp.ui.screens
 
-import android.content.Intent
-import android.net.Uri
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.*
@@ -236,38 +234,45 @@ fun CalendarCard(event: CalendarEvent, completedRounds: Int, onAddToCalendar: ()
 private fun addToCalendar(context: android.content.Context, event: CalendarEvent) {
     try {
         val raceDates = mapOf(
-            "Thailand GP" to "20260301", "Brazil GP" to "20260322",
-            "Americas GP" to "20260329", "Spanish GP" to "20260426",
-            "French GP" to "20260510", "Catalan GP" to "20260517",
-            "Italian GP" to "20260531", "Hungarian GP" to "20260607",
-            "Czech GP" to "20260621", "Dutch GP" to "20260628",
-            "German GP" to "20260712", "British GP" to "20260809",
-            "Aragon GP" to "20260830", "San Marino GP" to "20260913",
-            "Austrian GP" to "20260920", "Japanese GP" to "20261004",
-            "Indonesian GP" to "20261011", "Australian GP" to "20261025",
-            "Malaysian GP" to "20261101", "Qatar GP" to "20261108",
-            "Portuguese GP" to "20261122", "Valencia GP" to "20261129"
+            "Thailand GP" to "2026-03-01", "Brazil GP" to "2026-03-22",
+            "Americas GP" to "2026-03-29", "Spanish GP" to "2026-04-26",
+            "French GP" to "2026-05-10", "Catalan GP" to "2026-05-17",
+            "Italian GP" to "2026-05-31", "Hungarian GP" to "2026-06-07",
+            "Czech GP" to "2026-06-21", "Dutch GP" to "2026-06-28",
+            "German GP" to "2026-07-12", "British GP" to "2026-08-09",
+            "Aragon GP" to "2026-08-30", "San Marino GP" to "2026-09-13",
+            "Austrian GP" to "2026-09-20", "Japanese GP" to "2026-10-04",
+            "Indonesian GP" to "2026-10-11", "Australian GP" to "2026-10-25",
+            "Malaysian GP" to "2026-11-01", "Qatar GP" to "2026-11-08",
+            "Portuguese GP" to "2026-11-22", "Valencia GP" to "2026-11-29"
         )
         val dateStr = raceDates[event.name] ?: return
-        val year = dateStr.substring(0, 4)
-        val month = dateStr.substring(4, 6)
-        val day = dateStr.substring(6, 8)
+        val sdf = java.text.SimpleDateFormat("yyyy-MM-dd'T'HH:mm", java.util.Locale.US)
 
-        // Race start: 14:00 CEST = 12:00 UTC
-        val startMillis = "${year}${month}${day}T120000Z"
-        val endMillis = "${year}${month}${day}T140000Z"
+        // Race at 14:00 CEST (12:00 UTC)
+        val startTime = sdf.parse("${dateStr}T12:00")?.time ?: return
+        val endTime = startTime + 2 * 60 * 60 * 1000L // 2 hours
 
-        val uri = Uri.parse("content://com.android.calendar/time/$startMillis/$endMillis")
-        val intent = Intent(Intent.ACTION_VIEW).apply {
-            data = uri
-            flags = Intent.FLAG_ACTIVITY_NEW_TASK
+        // Use ACTION_INSERT with CalendarContract — abre el calendario nativo
+        val intent = android.content.Intent(android.content.Intent.ACTION_INSERT).apply {
+            data = android.provider.CalendarContract.Events.CONTENT_URI
+            putExtra(android.provider.CalendarContract.Events.TITLE, "🏁 MotoGP: ${event.name}")
+            putExtra(android.provider.CalendarContract.Events.DESCRIPTION, "MotoGP 2026 - ${event.circuit}")
+            putExtra(android.provider.CalendarContract.EXTRA_EVENT_BEGIN_TIME, startTime)
+            putExtra(android.provider.CalendarContract.EXTRA_EVENT_END_TIME, endTime)
+            putExtra(android.provider.CalendarContract.Events.ALL_DAY, false)
+            flags = android.content.Intent.FLAG_ACTIVITY_NEW_TASK
         }
         context.startActivity(intent)
     } catch (_: Exception) {
+        // Fallback: open Google Calendar web
         try {
-            val intent = Intent(Intent.ACTION_VIEW).apply {
-                data = Uri.parse("content://com.android.calendar/time/")
-                flags = Intent.FLAG_ACTIVITY_NEW_TASK
+            val name = java.net.URLEncoder.encode("MotoGP: ${event.name}", "UTF-8")
+            val details = java.net.URLEncoder.encode("MotoGP 2026 - ${event.circuit}", "UTF-8")
+            val webUrl = "https://calendar.google.com/calendar/render?action=TEMPLATE&text=$name&details=$details"
+            val intent = android.content.Intent(android.content.Intent.ACTION_VIEW).apply {
+                data = android.net.Uri.parse(webUrl)
+                flags = android.content.Intent.FLAG_ACTIVITY_NEW_TASK
             }
             context.startActivity(intent)
         } catch (_: Exception) {}

@@ -148,13 +148,80 @@ object Scraper {
     }
 
     fun fetchWeekendSchedule(gpName: String): WeekendGP {
-        return try {
+        // Always start from default sessions (never lose Friday sessions)
+        val baseSessions = getDefaultSessions().toMutableList()
+        val sessionKeys = listOf("FREE PRACTICE 1", "PRACTICE", "FREE PRACTICE 2",
+            "QUALIFYING 1", "QUALIFYING 2", "SPRINT", "WARM UP", "RACE")
+
+        try {
             val doc = Jsoup.connect(SCHEDULE_URL).timeout(TIMEOUT).get()
-            parseWeekendSchedule(doc, gpName)
-        } catch (e: Exception) {
-            WeekendGP(name = gpName, circuit = "", country = "", dateRange = "",
-                sessions = getDefaultSessions())
+            val text = doc.body().text()
+
+            // Update times from scrape, but NEVER remove sessions
+            for ((i, key) in sessionKeys.withIndex()) {
+                val idx = i
+                val matcher = Regex("$key[^\\d]*(\\d{1,2}\\s+(?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec))[^\\d]*(\\d{1,2}:\\d{2})").find(text)
+                if (matcher != null && idx < baseSessions.size) {
+                    val existing = baseSessions[idx]
+                    baseSessions[idx] = existing.copy(
+                        date = matcher.groupValues[1],
+                        time = matcher.groupValues[2]
+                    )
+                }
+            }
+        } catch (_: Exception) {
+            // Scrape failed, default sessions are already set
         }
+
+        // Mark completed sessions (yesterday's sessions are completed)
+        val now = java.util.Calendar.getInstance()
+        for ((i, s) in baseSessions.withIndex()) {
+            // Simple completion logic: if the date is before today, it's done
+            if (s.date.isNotEmpty()) {
+                try {
+                    val sdf = SimpleDateFormat("d MMM yyyy", Locale.US)
+                    val sessionDate = sdf.parse("${s.date} 2026")
+                    val cal = java.util.Calendar.getInstance().apply { time = sessionDate!! }
+                    if (cal.before(now) && cal.get(java.util.Calendar.DAY_OF_YEAR) != now.get(java.util.Calendar.DAY_OF_YEAR)) {
+                        baseSessions[i] = s.copy(isCompleted = true)
+                    }
+                } catch (_: Exception) {}
+            }
+        }
+
+        val circuitMap = mapOf(
+            "Thailand" to "Chang International Circuit",
+            "Catalan" to "Circuit de Barcelona-Catalunya",
+            "Spanish" to "Circuito de Jerez",
+            "French" to "Le Mans Circuit Bugatti",
+            "Italian" to "Mugello Circuit",
+            "Americas" to "Circuit of the Americas",
+            "Brazil" to "Autodromo Internacional Ayrton Senna",
+            "Hungarian" to "Balaton Park",
+            "Czech" to "Brno Circuit",
+            "Dutch" to "TT Circuit Assen",
+            "German" to "Sachsenring",
+            "British" to "Silverstone Circuit",
+            "Aragon" to "MotorLand Aragon",
+            "San Marino" to "Misano World Circuit",
+            "Austrian" to "Red Bull Ring",
+            "Japanese" to "Twin Ring Motegi",
+            "Indonesian" to "Mandalika Street Circuit",
+            "Australian" to "Phillip Island Circuit",
+            "Malaysian" to "Sepang International Circuit",
+            "Qatar" to "Losail International Circuit",
+            "Portuguese" to "Algarve International Circuit",
+            "Valencia" to "Circuit Ricardo Tormo"
+        )
+        val circuit = circuitMap.entries.find { gpName.contains(it.key, ignoreCase = true) }?.value ?: ""
+
+        return WeekendGP(
+            name = gpName,
+            circuit = circuit,
+            country = "",
+            dateRange = baseSessions.firstOrNull()?.date ?: "",
+            sessions = baseSessions
+        )
     }
 
     fun getDefaultSessions(): List<Session> {
@@ -167,72 +234,6 @@ object Scraper {
             Session("Sprint", "Sprint", "Sábado", "", "15:00"),
             Session("Warm Up", "WU", "Domingo", "", "09:40"),
             Session("Race", "Race", "Domingo", "", "14:00")
-        )
-    }
-
-    fun parseWeekendSchedule(doc: Document, gpName: String): WeekendGP {
-        val text = doc.body().text()
-        val gpPrefix = gpName.replace("GP", "").trim()
-
-        val sessionNames = listOf(
-            "FREE PRACTICE 1", "PRACTICE", "FREE PRACTICE 2",
-            "QUALIFYING 1", "QUALIFYING 2", "SPRINT", "WARM UP", "RACE"
-        )
-        val shortNames = listOf("FP1", "Practice", "FP2", "Q1", "Q2", "Sprint", "WU", "Race")
-        val days = listOf("Viernes", "Viernes", "Sábado", "Sábado", "Sábado", "Sábado", "Domingo", "Domingo")
-
-        // Find section for this GP and extract session data
-        val gpIdx = listOf(
-            "Thailand", "Brazil", "Americas", "Spanish", "French", "Catalan",
-            "Italian", "Hungarian", "Czech", "Dutch", "German", "British",
-            "Aragon", "San Marino", "Austrian", "Japanese", "Indonesian",
-            "Australian", "Malaysian", "Qatar", "Portuguese", "Valencia"
-        ).indexOfFirst { gpName.contains(it, ignoreCase = true) }
-
-        val sessions = mutableListOf<Session>()
-        val gpDates = mutableListOf<String>()
-
-        // Find dates in text
-        val dateRegex = Regex("(\\d{1,2}\\s+(Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec))")
-
-        // Parse all sessions from text
-        for (s in sessionNames) {
-            val matcher = Regex("$s[^\\d]*(\\d{1,2}\\s+(?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec))[^\\d]*(\\d{1,2}:\\d{2})").find(text)
-            if (matcher != null) {
-                val idx = sessionNames.indexOf(s)
-                sessions.add(Session(
-                    name = s.replace("FREE PRACTICE", "Free Practice")
-                        .replace("QUALIFYING", "Qualifying")
-                        .replace("WARM UP", "Warm Up"),
-                    shortName = shortNames[idx],
-                    day = days[idx],
-                    date = matcher.groupValues[1],
-                    time = matcher.groupValues[2],
-                    isCompleted = false
-                ))
-            }
-        }
-
-        if (sessions.isEmpty()) {
-            return WeekendGP(name = gpName, circuit = "", country = "", dateRange = "",
-                sessions = getDefaultSessions())
-        }
-
-        val circuitMap = mapOf(
-            "Thailand" to "Chang International Circuit",
-            "Catalan" to "Circuit de Barcelona-Catalunya",
-            "Spanish" to "Circuito de Jerez",
-            "French" to "Le Mans Circuit Bugatti",
-            "Italian" to "Mugello Circuit"
-        )
-        val circuit = circuitMap.entries.find { gpName.contains(it.key, ignoreCase = true) }?.value ?: ""
-
-        return WeekendGP(
-            name = gpName,
-            circuit = circuit,
-            country = "",
-            dateRange = sessions.firstOrNull()?.date ?: "",
-            sessions = sessions
         )
     }
 
@@ -355,13 +356,8 @@ object Scraper {
             val doc = Jsoup.connect(NEWS_URL).timeout(TIMEOUT).get()
             parseNews(doc)
         } catch (e: Exception) {
-            try {
-                // Fallback: try autosport (English, but better than nothing)
-                val doc = Jsoup.connect("https://www.autosport.com/motogp/news/").timeout(TIMEOUT).get()
-                parseAutosportNews(doc)
-            } catch (e2: Exception) {
-                getHardcodedNews()
-            }
+            // No fallback to English autosport — solo contenido en español
+            getHardcodedNews()
         }
     }
 
@@ -376,7 +372,7 @@ object Scraper {
                 val title = titleEl?.text()?.trim() ?: continue
                 val snippet = block.select("p, [class*=desc], [class*=excerpt], [class*=teaser]")
                     .firstOrNull()?.text()?.trim() ?: ""
-                val link = block.select("a[href]").firstOrNull() ?: titleEl
+                val link = (block.select("a[href]").firstOrNull()) ?: titleEl
                 val url = if (link != null) {
                     val href = link.attr("abs:href")
                     if (href.startsWith("http")) href else ""
@@ -406,21 +402,6 @@ object Scraper {
             }
         }
 
-        return if (articles.isEmpty()) getHardcodedNews() else articles.distinctBy { it.url }.take(25)
-    }
-
-    fun parseAutosportNews(doc: Document): List<NewsArticle> {
-        val articles = mutableListOf<NewsArticle>()
-        val links = doc.select("a[href*=/motogp/]")
-        for (link in links.take(25)) {
-            val title = link.text().trim()
-            if (title.length > 20 && !title.contains("Schedule") && !title.contains("Standings")) {
-                val url = link.attr("abs:href")
-                if (url.startsWith("http")) {
-                    articles.add(NewsArticle(title, "", "autosport", url, ""))
-                }
-            }
-        }
         return if (articles.isEmpty()) getHardcodedNews() else articles.distinctBy { it.url }.take(25)
     }
 
