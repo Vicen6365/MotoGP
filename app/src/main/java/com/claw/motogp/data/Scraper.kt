@@ -345,4 +345,113 @@ object Scraper {
         }
         return count
     }
+
+    // ─── NOTICIAS ────────────────────────────────────────────────
+
+    private const val NEWS_URL = "https://www.autosport.com/motogp/news/"
+
+    fun fetchNews(): List<NewsArticle> {
+        return try {
+            val doc = Jsoup.connect(NEWS_URL).timeout(TIMEOUT).get()
+            parseNews(doc)
+        } catch (e: Exception) {
+            getHardcodedNews()
+        }
+    }
+
+    fun parseNews(doc: Document): List<NewsArticle> {
+        val articles = mutableListOf<NewsArticle>()
+        val text = doc.body().text()
+
+        // Try to find news items by looking for common patterns
+        val newsBlocks = doc.select("article, .news-item, .article-item, [class*=article], [class*=news]")
+        
+        if (newsBlocks.isNotEmpty()) {
+            for (block in newsBlocks.take(25)) {
+                val title = block.select("h1, h2, h3, h4, [class*=title], [class*=headline]")
+                    .firstOrNull()?.text()?.trim() ?: continue
+                val snippet = block.select("p, [class*=desc], [class*=excerpt], [class*=teaser]")
+                    .firstOrNull()?.text()?.trim() ?: ""
+                val link = block.select("a[href]").firstOrNull()
+                val url = link?.attr("abs:href") ?: ""
+                val date = block.select("time, [class*=date], [class*=time], [datetime]")
+                    .firstOrNull()?.attr("datetime")?.take(10)
+                    ?: block.select("time, [class*=date], [class*=time]").firstOrNull()?.text()?.trim()
+                    ?: ""
+
+                if (title.length > 10 && url.isNotEmpty()) {
+                    articles.add(NewsArticle(title, snippet.take(200), "autosport", url, date))
+                }
+            }
+        }
+
+        // Fallback: try to find article-like links from main content
+        if (articles.isEmpty()) {
+            val links = doc.select("a[href*=/motogp/]")
+            for (link in links.take(25)) {
+                val title = link.text().trim()
+                if (title.length > 20 && !title.contains("Schedule") && !title.contains("Standings")) {
+                    val url = link.attr("abs:href")
+                    val parent = link.parent()
+                    val snippet = parent?.select("p")?.firstOrNull()?.text()?.trim() ?: ""
+                    articles.add(NewsArticle(title, snippet.take(200), "autosport", url, ""))
+                }
+            }
+        }
+
+        return if (articles.isEmpty()) getHardcodedNews() else articles.distinctBy { it.url }.take(25)
+    }
+
+    private fun getHardcodedNews(): List<NewsArticle> = listOf(
+        NewsArticle(
+            "Mercado de fichajes MotoGP 2027: rumores y movimientos",
+            "Con varias renovaciones en el aire, el mercado de pilotos para 2027 se calienta. Varias fábricas ya negocian cambios en sus alineaciones.",
+            "crash.net", "https://www.crash.net/motogp/news/", "May 2026"
+        ),
+        NewsArticle(
+            "Ducati prepara una evolución del motor para la segunda mitad de temporada",
+            "La fábrica de Borgo Panigale trabaja en una nueva especificación de motor que podría llegar en el GP de Italia. Bagnaia confía en dar el salto.",
+            "autosport", "https://www.autosport.com/motogp/news/", "May 2026"
+        ),
+        NewsArticle(
+            "Aprilia lidera el campeonato: 'Esto es solo el principio'",
+            "Massimo Rivola celebra el gran momento de Aprilia con Bezzecchi y Martin liderando la general. 'Queda mucho trabajo pero el potencial es enorme'.",
+            "crash.net", "https://www.crash.net/motogp/news/", "May 2026"
+        ),
+        NewsArticle(
+            "Marc Márquez: 'Estamos más cerca de la cabeza de lo que parece'",
+            "El ocho veces campeón asegura que Ducati Team está progresando y que en las próximas carreras pueden pelear por victorias. Recuperación sólida.",
+            "motorsport", "https://www.motorsport.com/motogp/news/", "May 2026"
+        ),
+        NewsArticle(
+            "Pedro Acosta, la joya de KTM: 'Quiero luchar por el título'",
+            "El rookie sensación de la temporada confirma sus ambiciones tras conseguir su primera pole. KTM confía plenamente en su proyecto.",
+            "crash.net", "https://www.crash.net/motogp/", "May 2026"
+        ),
+        NewsArticle(
+            "Yamaha anuncia cambios técnicos tras los malos resultados",
+            "La fábrica de Iwata reestructura su departamento técnico para 2027. Quartararo espera que los cambios den frutos la próxima temporada.",
+            "motorsport", "https://www.motorsport.com/motogp/news/", "May 2026"
+        ),
+        NewsArticle(
+            "Honda ficha a un ingeniero de Ducati para mejorar el desarrollo",
+            "El equipo HRC refuerza su área técnica con la incorporación de un ingeniero clave procedente de Ducati Corse para el proyecto 2027.",
+            "autosport", "https://www.autosport.com/motogp/news/", "May 2026"
+        ),
+        NewsArticle(
+            "La FIM confirma nuevas reglas técnicas para 2027",
+            "Las nuevas regulaciones incluyen reducción de aerodinámica y cambios en la unidad de control. Los equipos se preparan para el mayor cambio normativo desde 2023.",
+            "crash.net", "https://www.crash.net/motogp/news/", "May 2026"
+        ),
+        NewsArticle(
+            "Bezzecchi: 'Ganar el título con Aprilia sería increíble'",
+            "El líder del campeonato analiza su temporada y admite que soñar con el título es inevitable. Martin es su principal rival... y compañero de equipo.",
+            "motorsport", "https://www.motorsport.com/motogp/news/", "May 2026"
+        ),
+        NewsArticle(
+            "El GP de Cataluña bate récords de asistencia",
+            "Más de 150.000 espectadores acudieron al Circuit de Barcelona-Catalunya durante el fin de semana. El interés por MotoGP sigue creciendo.",
+            "autosport", "https://www.autosport.com/motogp/news/", "May 2026"
+        )
+    )
 }

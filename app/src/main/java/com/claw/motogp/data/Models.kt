@@ -102,3 +102,12 @@ data class ManufacturerHistory(
     val manufacturer: String,
     val pointsByRound: List<Int>
 )
+
+// News
+data class NewsArticle(
+    val title: String,
+    val snippet: String,
+    val source: String,
+    val url: String,
+    val date: String
+)
