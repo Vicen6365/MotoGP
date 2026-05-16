@@ -19,6 +19,7 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.ui.window.Dialog
 import com.claw.motogp.data.*
 import com.claw.motogp.ui.theme.*
 import kotlinx.coroutines.Dispatchers
@@ -242,7 +243,7 @@ fun SessionCard(session: Session, onClick: () -> Unit) {
     }
 }
 
-// ─── SESSION DETAIL DIALOG WITH REAL DATA + REFRESH ─────────
+// ─── SESSION DETAIL DIALOG (custom, con scroll de verdad) ─────
 
 @Composable
 fun SessionDetailDialog2(
@@ -261,74 +262,116 @@ fun SessionDetailDialog2(
         else -> MotoGPTextSecondary
     }
 
-    // Get results for this session from the WeekendGP cache
     val cachedResults = weekend.sessionResults[session.shortName] ?: emptyList()
     var displayedResults by remember(session.shortName, weekend) { mutableStateOf(cachedResults) }
 
-    AlertDialog(
+    Dialog(
         onDismissRequest = onDismiss,
-        containerColor = MotoGPSurface,
-        titleContentColor = MotoGPTextPrimary,
-        textContentColor = MotoGPTextSecondary,
-        title = {
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                Box(
-                    modifier = Modifier
-                        .size(32.dp)
-                        .clip(RoundedCornerShape(6.dp))
-                        .background(sessionColor.copy(alpha = 0.2f)),
-                    contentAlignment = Alignment.Center
+        properties = androidx.compose.ui.window.DialogProperties(usePlatformDefaultWidth = false)
+    ) {
+        Surface(
+            modifier = Modifier.fillMaxWidth().padding(16.dp),
+            shape = RoundedCornerShape(16.dp),
+            color = MotoGPSurface,
+            tonalElevation = 8.dp
+        ) {
+            Column(modifier = Modifier.fillMaxWidth().padding(bottom = 8.dp)) {
+                // Header
+                Row(
+                    modifier = Modifier.fillMaxWidth()
+                        .background(MotoGPRed.copy(alpha = 0.1f))
+                        .padding(16.dp),
+                    verticalAlignment = Alignment.CenterVertically
                 ) {
-                    Text(session.shortName.uppercase(), color = sessionColor,
-                        fontSize = 11.sp, fontWeight = FontWeight.Bold)
-                }
-                Spacer(Modifier.width(10.dp))
-                Column {
-                    Text(session.name, fontSize = 16.sp, fontWeight = FontWeight.Bold, color = MotoGPTextPrimary)
-                    Text("${session.time} · ${session.date.ifEmpty { "hoy" }}",
-                        fontSize = 12.sp, color = MotoGPTextMuted)
-                }
-            }
-        },
-        text = {
-            Column(Modifier.verticalScroll(rememberScrollState()).heightIn(max = 400.dp)) {
-            if (isRefreshing) {
-                Box(Modifier.fillMaxWidth().height(100.dp), contentAlignment = Alignment.Center) {
-                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                        CircularProgressIndicator(color = MotoGPRed, modifier = Modifier.size(24.dp))
-                        Spacer(Modifier.height(8.dp))
-                        Text("Actualizando...", color = MotoGPTextMuted, fontSize = 12.sp)
+                    Box(
+                        modifier = Modifier
+                            .size(36.dp)
+                            .clip(RoundedCornerShape(8.dp))
+                            .background(sessionColor.copy(alpha = 0.2f)),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Text(session.shortName.uppercase(), color = sessionColor,
+                            fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                    }
+                    Spacer(Modifier.width(12.dp))
+                    Column(Modifier.weight(1f)) {
+                        Text(session.name, fontSize = 16.sp, fontWeight = FontWeight.Bold, color = MotoGPTextPrimary)
+                        Text("${session.time} · ${session.date.ifEmpty { "hoy" }}",
+                            fontSize = 12.sp, color = MotoGPTextMuted)
+                    }
+                    // Close button
+                    IconButton(onClick = onDismiss, modifier = Modifier.size(32.dp)) {
+                        Text("✕", color = MotoGPTextMuted, fontSize = 16.sp)
                     }
                 }
-            } else if (displayedResults.isEmpty()) {
-                Column {
-                    Text("Esta sesión aún no tiene resultados publicados.",
-                        color = MotoGPTextSecondary, fontSize = 13.sp)
+
+                // Scrollable content
+                Column(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .heightIn(max = 500.dp)
+                        .verticalScroll(rememberScrollState())
+                        .padding(horizontal = 16.dp, vertical = 12.dp)
+                ) {
+                    if (isRefreshing) {
+                        Box(Modifier.fillMaxWidth().height(120.dp), contentAlignment = Alignment.Center) {
+                            Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                                CircularProgressIndicator(color = MotoGPRed, modifier = Modifier.size(28.dp))
+                                Spacer(Modifier.height(10.dp))
+                                Text("Actualizando...", color = MotoGPTextMuted, fontSize = 13.sp)
+                            }
+                        }
+                    } else if (displayedResults.isEmpty()) {
+                        // Empty state: session not yet run
+                        Box(Modifier.fillMaxWidth().padding(vertical = 40.dp), contentAlignment = Alignment.Center) {
+                            Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                                Text("⏳", fontSize = 40.sp)
+                                Spacer(Modifier.height(12.dp))
+                                Text("Todavía no hay datos para esta sesión",
+                                    color = MotoGPTextPrimary, fontSize = 15.sp,
+                                    fontWeight = FontWeight.Bold)
+                                Spacer(Modifier.height(6.dp))
+                                Text("La sesión aún no se ha celebrado o los resultados no están disponibles.",
+                                    color = MotoGPTextSecondary, fontSize = 13.sp,
+                                    textAlign = TextAlign.Center)
+                                Spacer(Modifier.height(8.dp))
+                                Text("Prueba a tocar ↻ Actualizar después de que termine la sesión.",
+                                    color = MotoGPTextMuted, fontSize = 12.sp,
+                                    textAlign = TextAlign.Center)
+                            }
+                        }
+                    } else {
+                        SessionResultsTable(displayedResults, session.shortName)
+                    }
+
                     Spacer(Modifier.height(8.dp))
-                    Text("Prueba a tocar 'Actualizar' o revisa más tarde cuando la sesión haya terminado.",
-                        color = MotoGPTextMuted, fontSize = 12.sp)
-                }
-            } else {
-                SessionResultsTable(displayedResults, session.shortName)
-            }
-            }
-        },
-        confirmButton = {
-            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                TextButton(onClick = {
-                    isRefreshing = true
-                    onRefresh(session)
-                    // Refresh re-triggered from parent will set new weekend
-                    // For immediate feedback, try fetching directly
-                }) {
-                    Text("↻ Actualizar", color = MotoGPRed, fontWeight = FontWeight.Bold)
-                }
-                TextButton(onClick = onDismiss) {
-                    Text("Cerrar", color = MotoGPTextMuted)
+
+                    // Refresh + Close buttons at bottom
+                    Row(
+                        Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceEvenly
+                    ) {
+                        Button(
+                            onClick = {
+                                isRefreshing = true
+                                onRefresh(session)
+                            },
+                            colors = ButtonDefaults.buttonColors(containerColor = MotoGPRed),
+                            enabled = !isRefreshing
+                        ) {
+                            Text("↻ Actualizar", color = Color.White)
+                        }
+                        OutlinedButton(
+                            onClick = onDismiss,
+                            colors = ButtonDefaults.outlinedButtonColors(contentColor = MotoGPTextMuted)
+                        ) {
+                            Text("Cerrar")
+                        }
+                    }
                 }
             }
         }
-    )
+    }
 }
 
 @Composable
