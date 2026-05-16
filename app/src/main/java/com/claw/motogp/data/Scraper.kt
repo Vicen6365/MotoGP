@@ -347,6 +347,7 @@ object Scraper {
                 try {
                     val article = Jsoup.connect(link.attr("abs:href")).timeout(TIMEOUT).get()
                     extractResultsFromHtml(article, results)
+                    extractCircuitRecordFromCrash(article, link.attr("href"))
                 } catch (_: Exception) {}
             }
 
@@ -798,3 +799,49 @@ object Scraper {
         )
     )
 }
+    private fun extractCircuitRecordFromCrash(doc: Document, articleHref: String) {
+        try {
+            val text = doc.body().text()
+            if (!text.contains("Best lap:", ignoreCase = true)) return
+
+            // Pattern: "Best lap: Rider, Team, 1m 29.288s (2026)"
+            val bestLapRegex = Regex("""Best lap: ([^,]+), ([^,]+), (\d+)m (\d+\.\d+)s \((\d{4})\)""", RegexOption.IGNORE_CASE)
+            val match = bestLapRegex.find(text) ?: return
+            val rider = match.groupValues[1].trim()
+            val time = "${match.groupValues[3]}'${match.groupValues[4]}s"
+            val year = match.groupValues[5]
+
+            // Map GP from article href to circuit name
+            val hrefLower = articleHref.lowercase()
+            val circuitName = when {
+                hrefLower.contains("catal") -> "Circuit de Barcelona-Catalunya"
+                hrefLower.contains("french") || hrefLower.contains("mans") -> "Bugatti Circuit (Le Mans)"
+                hrefLower.contains("jerez") || hrefLower.contains("spain") -> "Circuito de Jerez - Ángel Nieto"
+                hrefLower.contains("italy") || hrefLower.contains("mugello") -> "Mugello Circuit"
+                hrefLower.contains("thailand") -> "Chang International Circuit"
+                hrefLower.contains("americas") || hrefLower.contains("texas") -> "Circuit of the Americas"
+                hrefLower.contains("brazil") -> "Autódromo Internacional Ayrton Senna"
+                hrefLower.contains("hungary") || hrefLower.contains("balaton") -> "Balaton Park Circuit"
+                hrefLower.contains("czech") || hrefLower.contains("brno") -> "Automotodrom Brno"
+                hrefLower.contains("dutch") || hrefLower.contains("assen") -> "TT Circuit Assen"
+                hrefLower.contains("germany") || hrefLower.contains("sachsen") -> "Sachsenring"
+                hrefLower.contains("britain") || hrefLower.contains("silverstone") -> "Silverstone Circuit"
+                hrefLower.contains("aragon") -> "MotorLand Aragón"
+                hrefLower.contains("san marino") || hrefLower.contains("misano") || hrefLower.contains("rimini") -> "Misano World Circuit"
+                hrefLower.contains("austria") || hrefLower.contains("red bull ring") || hrefLower.contains("spielberg") -> "Red Bull Ring"
+                hrefLower.contains("japan") || hrefLower.contains("motegi") -> "Mobility Resort Motegi"
+                hrefLower.contains("indonesia") || hrefLower.contains("mandalika") -> "Pertamina Mandalika International Street Circuit"
+                hrefLower.contains("australia") || hrefLower.contains("phillip island") -> "Phillip Island Grand Prix Circuit"
+                hrefLower.contains("malaysia") || hrefLower.contains("sepang") -> "Sepang International Circuit"
+                hrefLower.contains("qatar") || hrefLower.contains("losail") -> "Lusail International Circuit"
+                hrefLower.contains("portugal") || hrefLower.contains("algarve") -> "Autódromo Internacional do Algarve"
+                hrefLower.contains("valencia") || hrefLower.contains("ricardo tormo") -> "Circuit Ricardo Tormo"
+                else -> return
+            }
+
+            val record = CircuitRecord(time, rider, year)
+            CircuitData.updatedRecords[circuitName] = record
+        } catch (_: Exception) {}
+    }
+
+
