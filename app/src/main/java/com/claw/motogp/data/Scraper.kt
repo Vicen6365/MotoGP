@@ -183,8 +183,24 @@ object Scraper {
                     val dateStr = dateFormat.format(cal.time)
 
                     // Mark as completed if the session day is fully in the past
-                    val isCompleted = cal.before(now) &&
-                        cal.get(java.util.Calendar.DAY_OF_YEAR) != now.get(java.util.Calendar.DAY_OF_YEAR)
+                    // Check by date first
+                    val isBeforeToday = cal.get(java.util.Calendar.YEAR) < now.get(java.util.Calendar.YEAR) ||
+                        (cal.get(java.util.Calendar.YEAR) == now.get(java.util.Calendar.YEAR) &&
+                         cal.get(java.util.Calendar.DAY_OF_YEAR) < now.get(java.util.Calendar.DAY_OF_YEAR))
+                    // Check if same day and time has passed
+                    val isTodayAndPassed = if (cal.get(java.util.Calendar.YEAR) == now.get(java.util.Calendar.YEAR) &&
+                        cal.get(java.util.Calendar.DAY_OF_YEAR) == now.get(java.util.Calendar.DAY_OF_YEAR)) {
+                        val t = baseSessions[i].time
+                        if (t.isNotEmpty()) {
+                            try {
+                                val parts = t.split(":")
+                                val sessionTime = parts[0].toInt() * 60 + parts[1].toInt()
+                                val nowTime = now.get(java.util.Calendar.HOUR_OF_DAY) * 60 + now.get(java.util.Calendar.MINUTE)
+                                sessionTime <= nowTime
+                            } catch (_: Exception) { false }
+                        } else false
+                    } else false
+                    val isCompleted = isBeforeToday || isTodayAndPassed
 
                     baseSessions[i] = baseSessions[i].copy(
                         day = dayLabels.getOrElse(i) { "Viernes" },
