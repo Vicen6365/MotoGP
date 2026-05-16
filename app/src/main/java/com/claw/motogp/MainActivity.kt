@@ -7,14 +7,15 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.CalendarMonth
+import androidx.compose.material.icons.filled.EmojiEvents
 import androidx.compose.material.icons.filled.FlagCircle
-import androidx.compose.material.icons.filled.Trophy
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.claw.motogp.ui.screens.CalendarScreen
 import com.claw.motogp.ui.screens.StandingsScreen
@@ -47,7 +48,7 @@ fun MotoGPApp() {
     var selectedTab by remember { mutableIntStateOf(0) }
     val items = listOf(
         NavItem("Finde", Icons.Filled.FlagCircle),
-        NavItem("Clasif.", Icons.Filled.Trophy),
+        NavItem("Clasif.", Icons.Filled.EmojiEvents),
         NavItem("Calendario", Icons.Filled.CalendarMonth)
     )
 
@@ -56,7 +57,7 @@ fun MotoGPApp() {
             NavigationBar(
                 containerColor = MotoGPBg,
                 contentColor = Color.White,
-                tonalElevation = androidx.compose.ui.unit.dp.times(0)
+                tonalElevation = 0.dp
             ) {
                 items.forEachIndexed { index, item ->
                     NavigationBarItem(

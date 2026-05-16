@@ -3,6 +3,7 @@ package com.claw.motogp.ui.screens
 import android.content.Intent
 import android.net.Uri
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
@@ -30,6 +31,7 @@ fun CalendarScreen() {
     var errorMsg by remember { mutableStateOf("") }
     val scope = rememberCoroutineScope()
     val context = LocalContext.current
+    val completedRounds = remember { Scraper.computeCompletedRounds() }
 
     fun loadData() {
         isLoading = true
@@ -128,7 +130,7 @@ fun CalendarScreen() {
                 }
 
                 items(calendar) { gp ->
-                    CalendarCard(gp, onAddToCalendar = {
+                    CalendarCard(gp, completedRounds, onAddToCalendar = {
                         addToCalendar(context, gp)
                     })
                 }
@@ -138,13 +140,21 @@ fun CalendarScreen() {
 }
 
 @Composable
-fun CalendarCard(event: CalendarEvent, onAddToCalendar: () -> Unit) {
+fun CalendarCard(event: CalendarEvent, completedRounds: Int, onAddToCalendar: () -> Unit) {
     val isCompleted = event.isCompleted
-    val isNext = !isCompleted && event.round == (Scraper().computeCompletedRounds() + 1)
+    val isNext = !isCompleted && event.round == (completedRounds + 1)
     val borderColor = when {
         isNext -> Color(0xFFFF9800)
         isCompleted -> MotoGPTextMuted
         else -> MotoGPRed
+    }
+
+    val cardModifier = if (isNext) {
+        Modifier
+            .fillMaxWidth()
+            .border(1.5.dp, Color(0xFFFF9800), RoundedCornerShape(10.dp))
+    } else {
+        Modifier.fillMaxWidth()
     }
 
     Card(
@@ -152,13 +162,7 @@ fun CalendarCard(event: CalendarEvent, onAddToCalendar: () -> Unit) {
             containerColor = if (isCompleted) MotoGPSurface.copy(alpha = 0.6f) else MotoGPSurface
         ),
         shape = RoundedCornerShape(10.dp),
-        modifier = Modifier
-            .fillMaxWidth()
-            .then(
-                if (isNext) Modifier.border(
-                    1.5.dp, Color(0xFFFF9800), RoundedCornerShape(10.dp)
-                ) else Modifier
-            )
+        modifier = cardModifier
     ) {
         Row(
             modifier = Modifier
@@ -196,11 +200,16 @@ fun CalendarCard(event: CalendarEvent, onAddToCalendar: () -> Unit) {
                     color = MotoGPTextMuted,
                     fontSize = 12.sp
                 )
-                Text(
-                    text = if (event.dateRange.isNotEmpty()) event.dateRange else "TBD",
-                    color = if (isCompleted) MotoGPTextMuted else MotoGPTextSecondary,
-                    fontSize = 11.sp
-                )
+                Row {
+                    Text(
+                        text = if (event.dateRange.isNotEmpty()) event.dateRange else "TBD",
+                        color = if (isCompleted) MotoGPTextMuted else MotoGPTextSecondary,
+                        fontSize = 11.sp
+                    )
+                    if (isNext) {
+                        Text(" · Siguiente", color = Color(0xFFFF9800), fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                    }
+                }
             }
 
             Column(horizontalAlignment = Alignment.End) {
@@ -226,7 +235,6 @@ fun CalendarCard(event: CalendarEvent, onAddToCalendar: () -> Unit) {
 
 private fun addToCalendar(context: android.content.Context, event: CalendarEvent) {
     try {
-        // Build date from known race schedule
         val raceDates = mapOf(
             "Thailand GP" to "20260301", "Brazil GP" to "20260322",
             "Americas GP" to "20260329", "Spanish GP" to "20260426",
@@ -247,18 +255,15 @@ private fun addToCalendar(context: android.content.Context, event: CalendarEvent
 
         // Race start: 14:00 CEST = 12:00 UTC
         val startMillis = "${year}${month}${day}T120000Z"
-        // End: ~2h later
         val endMillis = "${year}${month}${day}T140000Z"
 
         val uri = Uri.parse("content://com.android.calendar/time/$startMillis/$endMillis")
-
         val intent = Intent(Intent.ACTION_VIEW).apply {
             data = uri
             flags = Intent.FLAG_ACTIVITY_NEW_TASK
         }
         context.startActivity(intent)
     } catch (_: Exception) {
-        // Fallback: just open calendar app
         try {
             val intent = Intent(Intent.ACTION_VIEW).apply {
                 data = Uri.parse("content://com.android.calendar/time/")
