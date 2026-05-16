@@ -420,7 +420,11 @@ object Scraper {
 
                 parsed.add(SessionResult(pos, riderName, team, time))
             }
-            if (parsed.isNotEmpty()) results[sessionKey] = parsed
+            if (parsed.isNotEmpty()) {
+                results[sessionKey] = parsed
+                // Full Qualifying table covers both Q1 and Q2
+                if (sessionKey == "Q2") results["Q1"] = parsed
+            }
         }
     }
     // ─── CIRCUIT RECORDS (SPOTVNOW) ───────────────────────────
@@ -431,12 +435,30 @@ object Scraper {
      * Falls back to empty map on failure.
      */
     fun fetchCircuitRecords(): Map<String, CircuitRecord> {
-        return try {
+        val records = try {
             val doc = Jsoup.connect(RECORDS_URL).timeout(TIMEOUT).get()
             parseCircuitRecords(doc)
         } catch (e: Exception) {
             emptyMap()
         }
+        // Also try to get updated circuit records from crash.net recent articles
+        try {
+            val resultsDoc = Jsoup.connect(CRASH_RESULTS_URL).timeout(TIMEOUT).get()
+            val links = resultsDoc.select("a[href*=\"/motogp/results/\"]")
+            val seenHrefs = mutableSetOf<String>()
+            for (link in links) {
+                val href = link.attr("href")
+                if (!seenHrefs.add(href)) continue
+                val hrefLower = href.lowercase()
+                // Only fetch actual race result articles (skip analysis/preview)
+                if (hrefLower.contains("race-results") || hrefLower.contains("warm-race-results")) {
+                    val article = Jsoup.connect(link.attr("abs:href")).timeout(TIMEOUT).get()
+                    extractCircuitRecordFromCrash(article, href)
+                    break // Most recent race article is enough
+                }
+            }
+        } catch (_: Exception) {}
+        return records
     }
 
     fun parseCircuitRecords(doc: Document): Map<String, CircuitRecord> {
