@@ -320,274 +320,79 @@ object Scraper {
                 }
                 .take(4)
 
-            if (articleLinks.isEmpty()) return getHardcodedSessionResults()
+            if (articleLinks.isEmpty()) return emptyMap()
 
             val results = mutableMapOf<String, List<SessionResult>>()
             for (link in articleLinks) {
                 try {
                     val article = Jsoup.connect(link.attr("abs:href")).timeout(TIMEOUT).get()
-                    extractResultsFromArticle(article.body().text(), results)
+                    extractResultsFromHtml(article, results)
                 } catch (_: Exception) {}
             }
 
-            if (results.isEmpty()) return getHardcodedSessionResults()
             results
         } catch (_: Exception) {
-            getHardcodedSessionResults()
-        }
-    }
-
-    private fun extractResultsFromArticle(text: String, results: MutableMap<String, List<SessionResult>>) {
-        val sections = text.split("##")
-        for (section in sections) {
-            val header = section.substringBefore("\n").trim().lowercase()
-            val sessionKey = when {
-                header.contains("full qualifying") -> "Q2"
-                header.contains("qualifying results") -> "Q2"
-                header.contains("saturday free practice") -> "FP2"
-                header.contains("practice results") && !header.contains("free") -> "Practice"
-                header.contains("free practice 1") || header.contains("fp1") -> "FP1"
-                header.contains("race results") || header.contains("grand prix results") -> "Race"
-                header.contains("sprint") && (header.contains("result") || header.contains("grid")) -> "Sprint"
-                header.contains("warm up") -> "WU"
-                else -> null
-            }
-            if (sessionKey != null) {
-                val rows = parseResultTable(section)
-                if (rows.isNotEmpty()) results[sessionKey] = rows
-            }
-        }
-    }
-
-    private fun parseResultTable(section: String): List<SessionResult> {
-        val rows = mutableListOf<SessionResult>()
-        val linePattern = Regex("""^(\d{1,2})\s+([A-Za-zÀ-ÿ]+(?:\s+[A-Za-zÀ-ÿ]+)?)\s+(?:[A-Z]{3,4}\s+)?(?:[A-Za-zÀ-ÿ0-9/\s]+?\s+)?(\d['\"]?\d*\.\d{3}s|[\+\-]\d+\.\d{3}s)""")
-        for (line in section.split("\n").drop(1)) {
-            val trimmed = line.trim()
-            if (trimmed.isEmpty() || trimmed.startsWith("Pos") || trimmed.startsWith("*")) continue
-            if (trimmed == "Qualifying 1:") continue
-            val match = linePattern.find(trimmed)
-            if (match != null) {
-                val pos = match.groupValues[1].toIntOrNull() ?: continue
-                val rider = match.groupValues[2].trim()
-                val time = match.groupValues[3].trim()
-                rows.add(SessionResult(pos, rider, "", time))
-            }
-        }
-        return rows
-    }
-
-    // ─── CIRCUIT RECORDS (SPOTVNOW) ───────────────────────────
-
-    /**
-     * Fetches the latest all-time circuit lap records from SPOTVNOW.
-     * Returns a map of circuit name -> CircuitRecord.
-     * Falls back to empty map on failure.
-     */
-    fun fetchCircuitRecords(): Map<String, CircuitRecord> {
-        return try {
-            val doc = Jsoup.connect(RECORDS_URL).timeout(TIMEOUT).get()
-            parseCircuitRecords(doc)
-        } catch (e: Exception) {
             emptyMap()
         }
     }
 
-    fun parseCircuitRecords(doc: Document): Map<String, CircuitRecord> {
-        val records = mutableMapOf<String, CircuitRecord>()
+    private fun extractResultsFromHtml(doc: org.jsoup.nodes.Document, results: MutableMap<String, List<SessionResult>>) {
+        val tables = doc.select("table")
+        for (table in tables) {
+            val rows = table.select("tr")
+            if (rows.size < 2) continue
 
-        // Get the main article text
-        val text = doc.body().text()
+            // Determine session type from first row (title)
+            val titleText = rows[0].text().lowercase()
+            val sessionKey = when {
+                titleText.contains("full qualifying") || titleText.contains("qualifying results") -> "Q2"
+                titleText.contains("saturday free practice") -> "FP2"
+                titleText.contains("practice results") && !titleText.contains("free") -> "Practice"
+                titleText.contains("free practice 1") || titleText.contains("fp1") -> "FP1"
+                titleText.contains("sprint race") -> "Sprint"
+                titleText.contains("race results") || titleText.contains("grand prix") -> "Race"
+                titleText.contains("warm up") -> "WU"
+                else -> null
+            }
+            if (sessionKey == null) continue
 
-        // SPOTVNOW article has records in text like:
-        // "Thailand GP Chang International Circuit 1:28.700 Francesco Bagnaia Ducati 2024"
-        // Each GP block has: GP name, Circuit name, Lap time, Rider, Manufacturer, Year
+            // Parse data rows (skip title + column headers)
+            val parsed = mutableListOf<SessionResult>()
+            val dataStartIdx = if (rows.size > 2 && rows[1].text().lowercase().contains("pos")) 2 else 1
+            for (i in dataStartIdx until rows.size) {
+                val row = rows[i]
+                val cells = row.select("td")
+                if (cells.size < 3) continue
 
-        // Map SPOTVNOW GP names to our circuit names
-        val gpToCircuit = mapOf(
-            "Thailand GP" to "Chang International Circuit",
-            "Brazilian GP" to "Autódromo Internacional Ayrton Senna",
-            "Grand Prix of the Americas" to "Circuit of the Americas",
-            "Spanish GP" to "Circuito de Jerez - Ángel Nieto",
-            "French GP" to "Bugatti Circuit (Le Mans)",
-            "Catalan GP" to "Circuit de Barcelona-Catalunya",
-            "Italian GP" to "Mugello Circuit",
-            "Hungarian GP" to "Balaton Park Circuit",
-            "Czech Republic GP" to "Automotodrom Brno",
-            "Dutch TT" to "TT Circuit Assen",
-            "German GP" to "Sachsenring",
-            "British GP" to "Silverstone Circuit",
-            "Aragon GP" to "MotorLand Aragón",
-            "San Marino and Rimini Riviera GP" to "Misano World Circuit",
-            "Austrian GP" to "Red Bull Ring",
-            "Japanese GP" to "Mobility Resort Motegi",
-            "Indonesian GP" to "Pertamina Mandalika International Street Circuit",
-            "Australian GP" to "Phillip Island Grand Prix Circuit",
-            "Malaysian GP" to "Sepang International Circuit",
-            "Qatar GP" to "Lusail International Circuit",
-            "Portuguese GP" to "Autódromo Internacional do Algarve",
-            "Valencian GP" to "Circuit Ricardo Tormo"
-        )
+                // Get position from first cell
+                val posText = cells[0].text().trim()
+                val pos = posText.toIntOrNull() ?: continue
 
-        // Parse records: look for GP name followed by circuit name, time, rider, year
-        for ((gpName, circuitName) in gpToCircuit) {
-            try {
-                // Find this GP's block in the text
-                val idx = text.indexOf(gpName)
-                if (idx < 0) continue
+                // Get rider name from second cell - remove nationality and position change arrows
+                val riderCell = cells[1].text().trim()
+                val riderName = riderCell.replace(Regex("[\\^\\u02C5=\\u02C3]\\d*\\s*"), "").trim()
 
-                val block = text.substring(idx, (idx + 300).coerceAtMost(text.length))
+                // Get team from third cell - extract before (bike)
+                val teamCell = cells[2].text().trim()
+                val team = teamCell.substringBefore("(").trim()
 
-                // Extract lap time: patterns like "1:28.700" or "1'25.440"
-                val timeMatch = Regex("""(\d[':]\d+\.\d{3})""").find(block)
-                // Extract year: a 4-digit year near the end
-                val yearMatch = Regex("""\b(19\d{2}|20\d{2})\b""").find(block.let { b ->
-                    // Look for year AFTER the time
-                    if (timeMatch != null) b.substring(timeMatch.range.last)
-                    else b
-                })
-                // Extract rider name - capitalized names with possible special chars
-                val riderMatch = Regex("""(?:\d+'?\d+\.\d{3}\s+)([A-Z][a-zÀ-ÿéèêë]+(?:\s+[A-Z][a-zÀ-ÿéèêë]+)+)""").find(block)
+                // Find time column (last numeric column)
+                val timeCols = cells.filter { c ->
+                    val t = c.text().trim()
+                    t.matches(Regex("""[\d'+].*""")) && !t.matches(Regex("""\d{3,4}k"""))
+                }
+                val time = timeCols.lastOrNull()?.text()?.trim() ?: ""
 
-                val lapTime = timeMatch?.value?.replace("'", "'") ?: continue
-                val year = yearMatch?.value ?: continue
-                val rider = riderMatch?.groupValues?.get(1)?.trim() ?: continue
+                if (riderName.length > 2) {
+                    parsed.add(SessionResult(pos, riderName, team, time))
+                }
+            }
 
-                records[circuitName] = CircuitRecord(lapTime, rider, year)
-            } catch (_: Exception) { continue }
+            if (parsed.isNotEmpty()) {
+                results[sessionKey] = parsed
+            }
         }
-
-        return records
     }
-
-    private fun getHardcodedSessionResults(): Map<String, List<SessionResult>> {
-        val allRiders = listOf(
-            "M. Bezzecchi" to "Aprilia Racing",
-            "J. Martin" to "Aprilia Racing",
-            "F. Di Giannantonio" to "VR46 Ducati",
-            "P. Acosta" to "Red Bull KTM",
-            "A. Ogura" to "Trackhouse Aprilia",
-            "R. Fernández" to "Trackhouse Aprilia",
-            "M. Marquez" to "Ducati Lenovo",
-            "A. Marquez" to "Gresini Ducati",
-            "F. Bagnaia" to "Ducati Lenovo",
-            "E. Bastianini" to "Tech3 KTM",
-            "L. Marini" to "Honda HRC",
-            "J. Zarco" to "Castrol Honda",
-            "B. Binder" to "Red Bull KTM",
-            "F. Aldeguer" to "Gresini Ducati",
-            "F. Morbidelli" to "VR46 Ducati",
-            "F. Quartararo" to "Monster Yamaha",
-            "D. Moreira" to "LCR Honda",
-            "J. Mir" to "Honda HRC",
-            "A. Rins" to "Monster Yamaha",
-            "T. Razgatlioglu" to "Pramac Yamaha",
-            "J. Miller" to "Pramac Yamaha",
-            "M. Viñales" to "Tech3 KTM"
-        )
-
-        fun genTimes(base: String, gaps: List<Double>): List<String> {
-            return gaps.mapIndexed { i, gap ->
-                if (gap == 0.0) base
-                else if (gap < 0.1) "+0" + "%.3f".format(gap) + "s"
-                else "+" + "%.3f".format(gap) + "s"
-            }
-        }
-
-        val progressiveGaps = listOf(0.0, 0.023, 0.045, 0.068, 0.092, 0.118, 0.146, 0.176, 0.208, 0.242,
-            0.278, 0.316, 0.356, 0.398, 0.442, 0.488, 0.536, 0.586, 0.638, 0.692, 0.748, 0.806)
-
-        val fp1Times = genTimes("1'39.124s", progressiveGaps)
-        val pracTimes = genTimes("1'38.710s", progressiveGaps)
-        val fp2Times = genTimes("1'39.425s", progressiveGaps)
-        val q2Times = genTimes("1'38.068s", progressiveGaps)
-        val q1Times = genTimes("1'38.752s", progressiveGaps)
-
-        fun raceTime(pos: Int): String = when (pos) {
-            1 -> "41'05.234"
-            2 -> "+2.345"
-            3 -> "+4.567"
-            4 -> "+6.789"
-            5 -> "+9.012"
-            6 -> "+11.345"
-            7 -> "+13.678"
-            8 -> "+15.901"
-            9 -> "+18.234"
-            10 -> "+20.567"
-            11 -> "+22.890"
-            12 -> "+25.123"
-            13 -> "+28.456"
-            14 -> "+31.789"
-            15 -> "+35.012"
-            16 -> "+38.345"
-            17 -> "+41.678"
-            18 -> "+45.012"
-            19 -> "+48.345"
-            20 -> "+52.012"
-            21 -> "+56.345"
-            22 -> "+1'01.234"
-            else -> ""
-        }
-
-        fun sprintTime(pos: Int): String = when (pos) {
-            1 -> "19'52.123"
-            2 -> "+0.847"
-            3 -> "+1.234"
-            4 -> "+2.156"
-            5 -> "+3.891"
-            6 -> "+4.567"
-            7 -> "+5.234"
-            8 -> "+6.102"
-            9 -> "+7.456"
-            10 -> "+8.789"
-            11 -> "+10.123"
-            12 -> "+12.456"
-            13 -> "+14.789"
-            14 -> "+16.123"
-            15 -> "+18.456"
-            16 -> "+20.789"
-            17 -> "+23.123"
-            18 -> "+26.456"
-            19 -> "+29.789"
-            20 -> "+33.123"
-            21 -> "+37.456"
-            22 -> "+42.789"
-            else -> ""
-        }
-
-        fun fullGrid(times: List<String>): List<SessionResult> =
-            allRiders.mapIndexed { i, (rider, team) ->
-                SessionResult(i + 1, rider, team, times[i])
-            }
-
-        fun q2Grid(): List<SessionResult> =
-            allRiders.take(12).mapIndexed { i, (rider, team) ->
-                SessionResult(i + 1, rider, team, q2Times[i])
-            }
-
-        fun q1Grid(): List<SessionResult> =
-            allRiders.drop(12).mapIndexed { i, (rider, team) ->
-                SessionResult(i + 13, rider, team, q1Times[i])
-            }
-
-        return mapOf(
-            "FP1" to fullGrid(fp1Times),
-            "Practice" to fullGrid(pracTimes),
-            "FP2" to fullGrid(fp2Times),
-            "Q2" to q2Grid(),
-            "Q1" to q1Grid(),
-            "Sprint" to allRiders.mapIndexed { i, (rider, team) ->
-                SessionResult(i + 1, rider, team, sprintTime(i + 1))
-            },
-            "Race" to allRiders.mapIndexed { i, (rider, team) ->
-                SessionResult(i + 1, rider, team, raceTime(i + 1))
-            },
-            "WU" to fullGrid(listOf("1'40.234s", "+0.12s", "+0.18s", "+0.24s", "+0.31s", "+0.39s",
-                "+0.48s", "+0.58s", "+0.69s", "+0.81s", "+0.94s", "+1.08s", "+1.23s", "+1.39s",
-                "+1.56s", "+1.74s", "+1.93s", "+2.13s", "+2.34s", "+2.56s", "+2.79s", "+3.03s"))
-        )
-    }
-
     fun computeRiderHistory(standings: List<RiderStanding>): List<RiderHistory> {
         return standings.take(5).map { RiderHistory(it.rider, listOf(it.points)) }
     }

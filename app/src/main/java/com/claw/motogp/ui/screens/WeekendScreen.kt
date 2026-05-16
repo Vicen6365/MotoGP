@@ -99,12 +99,12 @@ fun WeekendScreen() {
             colors = ButtonDefaults.buttonColors(containerColor = MotoGPRed),
             enabled = !isLoading
         ) {
-            Text(if (isLoading) "Actualizando..." else "↻ Actualizar horarios", color = Color.White)
+            Text(if (isLoading) "Actualizando..." else "↻ Actualizar tiempos", color = Color.White)
         }
 
         // Info chip
         Text(
-            "Toca una sesión para ver tiempos",
+            "Toca una sesión completada para ver tiempos",
             color = MotoGPTextMuted, fontSize = 11.sp,
             modifier = Modifier.padding(horizontal = 16.dp, vertical = 2.dp)
         )
@@ -210,7 +210,7 @@ fun SessionCard(session: Session, onClick: () -> Unit) {
     }
 
     Card(
-        modifier = Modifier.fillMaxWidth().clickable { onClick() },
+        modifier = Modifier.fillMaxWidth().clickable(enabled = session.isCompleted) { onClick() },
         colors = CardDefaults.cardColors(containerColor = MotoGPSurface),
         shape = RoundedCornerShape(10.dp)
     ) {
@@ -253,7 +253,12 @@ fun SessionCard(session: Session, onClick: () -> Unit) {
                 } else {
                     Text("⏳", fontSize = 14.sp)
                 }
-                Text("▸", color = sessionColor.copy(alpha = 0.5f), fontSize = 12.sp)
+                
+                if (session.isCompleted) {
+                    Text("▸", color = sessionColor.copy(alpha = 0.5f), fontSize = 12.sp)
+                } else {
+                    Text("🔒", fontSize = 11.sp)
+                }
             }
         }
     }
