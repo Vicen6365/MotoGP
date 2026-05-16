@@ -1,5 +1,7 @@
 package com.claw.motogp.data
 
+import com.claw.motogp.R
+
 data class Session(
     val name: String,       // ej: "Free Practice 1", "Qualifying 1", "Race"
     val shortName: String,  // ej: "FP1", "Q1", "RACE"
