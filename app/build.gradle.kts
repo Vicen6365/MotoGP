@@ -19,6 +19,18 @@ android {
     buildTypes {
         release {
             isMinifyEnabled = false
+            signingConfig = signingConfigs.getByName("release")
+        }
+    }
+
+    signingConfigs {
+        create("release") {
+            storeFile = file("../motogp.keystore")
+            storePassword = "motogp2026"
+            keyAlias = "motogp"
+            keyPassword = "motogp2026"
+            enableV1Signing = true
+            enableV2Signing = true
         }
     }
 
