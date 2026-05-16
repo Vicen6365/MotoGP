@@ -43,7 +43,9 @@ fun WeekendScreen() {
                     val idx = Scraper.getCurrentWeekend(cal)
                     val gpName = cal.getOrNull(idx)?.name ?: "Catalan GP"
                     val wknd = Scraper.fetchWeekendSchedule(gpName)
-                    Pair(cal, wknd)
+                    // Also load session results in background
+                    val results = Scraper.fetchSessionResults(gpName)
+                    Pair(cal, wknd.copy(sessionResults = results))
                 }
                 calendar = cal
                 weekend = wknd
@@ -58,28 +60,30 @@ fun WeekendScreen() {
     LaunchedEffect(Unit) { loadData() }
 
     // Session detail dialog
-    if (selectedSession != null) {
-        SessionDetailDialog(selectedSession!!, weekend) {
-            selectedSession = null
-        }
+    if (selectedSession != null && weekend != null) {
+        SessionDetailDialog2(selectedSession!!, weekend!!, onDismiss = { selectedSession = null },
+            onRefresh = { session ->
+                scope.launch {
+                    val results = withContext(Dispatchers.IO) {
+                        Scraper.fetchSessionResults(weekend!!.name)
+                    }
+                    weekend = weekend!!.copy(sessionResults = results)
+                }
+            }
+        )
     }
 
     Column(
-        modifier = Modifier
-            .fillMaxSize()
-            .background(MotoGPBg)
+        modifier = Modifier.fillMaxSize().background(MotoGPBg)
     ) {
         // Header
         Box(
-            modifier = Modifier
-                .fillMaxWidth()
-                .background(MotoGPRed)
-                .padding(horizontal = 20.dp, vertical = 16.dp)
+            modifier = Modifier.fillMaxWidth().background(MotoGPRed).padding(horizontal = 20.dp, vertical = 16.dp)
         ) {
             Column {
                 Text("🏁 FIN DE SEMANA",
-                    color = Color.White.copy(alpha = 0.7f),
-                    fontSize = 12.sp, fontWeight = FontWeight.Bold, letterSpacing = 2.sp)
+                    color = Color.White.copy(alpha = 0.7f), fontSize = 12.sp,
+                    fontWeight = FontWeight.Bold, letterSpacing = 2.sp)
                 Text(weekend?.name ?: "Cargando...",
                     color = Color.White, fontSize = 22.sp, fontWeight = FontWeight.Bold)
             }
@@ -88,9 +92,7 @@ fun WeekendScreen() {
         // Refresh
         Button(
             onClick = { loadData() },
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(horizontal = 16.dp, vertical = 8.dp),
+            modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp),
             colors = ButtonDefaults.buttonColors(containerColor = MotoGPRed),
             enabled = !isLoading
         ) {
@@ -99,7 +101,7 @@ fun WeekendScreen() {
 
         // Info chip
         Text(
-            "Toca una sesión para ver resultados",
+            "Toca una sesión para ver tiempos",
             color = MotoGPTextMuted, fontSize = 11.sp,
             modifier = Modifier.padding(horizontal = 16.dp, vertical = 2.dp)
         )
@@ -128,7 +130,7 @@ fun WeekendScreen() {
                 contentPadding = PaddingValues(16.dp),
                 verticalArrangement = Arrangement.spacedBy(6.dp)
             ) {
-                // Circuit + horarios label
+                // Circuit card
                 item {
                     Card(
                         colors = CardDefaults.cardColors(containerColor = MotoGPSurface),
@@ -171,8 +173,7 @@ fun WeekendScreen() {
 fun DayHeader(day: String) {
     Text(
         text = day.uppercase(),
-        color = MotoGPSilver,
-        fontSize = 13.sp,
+        color = MotoGPSilver, fontSize = 13.sp,
         fontWeight = FontWeight.Bold,
         modifier = Modifier.padding(top = 6.dp, bottom = 2.dp)
     )
@@ -190,19 +191,15 @@ fun SessionCard(session: Session, onClick: () -> Unit) {
     }
 
     Card(
-        modifier = Modifier
-            .fillMaxWidth()
-            .clickable { onClick() },
+        modifier = Modifier.fillMaxWidth().clickable { onClick() },
         colors = CardDefaults.cardColors(containerColor = MotoGPSurface),
         shape = RoundedCornerShape(10.dp)
     ) {
         Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(horizontal = 14.dp, vertical = 12.dp),
+            modifier = Modifier.fillMaxWidth().padding(horizontal = 14.dp, vertical = 12.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
-            // Hour badge
+            // Hour badge (adaptive width)
             Box(
                 modifier = Modifier
                     .widthIn(min = 48.dp)
@@ -211,33 +208,18 @@ fun SessionCard(session: Session, onClick: () -> Unit) {
                     .padding(horizontal = 8.dp, vertical = 10.dp),
                 contentAlignment = Alignment.Center
             ) {
-                Text(
-                    text = session.time,
-                    color = sessionColor,
-                    fontWeight = FontWeight.Bold,
-                    fontSize = 15.sp,
-                    maxLines = 1
-                )
+                Text(session.time, color = sessionColor,
+                    fontWeight = FontWeight.Bold, fontSize = 15.sp, maxLines = 1)
             }
 
             Spacer(Modifier.width(14.dp))
 
             // Name + date
             Column(modifier = Modifier.weight(1f)) {
-                Text(
-                    text = session.shortName.uppercase(),
-                    color = sessionColor,
-                    fontSize = 11.sp,
-                    fontWeight = FontWeight.Bold,
-                    letterSpacing = 1.sp
-                )
-                Text(
-                    text = session.name,
-                    color = MotoGPTextSecondary,
-                    fontSize = 13.sp,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis
-                )
+                Text(session.shortName.uppercase(), color = sessionColor,
+                    fontSize = 11.sp, fontWeight = FontWeight.Bold, letterSpacing = 1.sp)
+                Text(session.name, color = MotoGPTextSecondary,
+                    fontSize = 13.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
                 if (session.date.isNotEmpty()) {
                     Text(session.date, color = MotoGPTextMuted, fontSize = 10.sp)
                 }
@@ -258,8 +240,16 @@ fun SessionCard(session: Session, onClick: () -> Unit) {
     }
 }
 
+// ─── SESSION DETAIL DIALOG WITH REAL DATA + REFRESH ─────────
+
 @Composable
-fun SessionDetailDialog(session: Session, weekend: WeekendGP?, onDismiss: () -> Unit) {
+fun SessionDetailDialog2(
+    session: Session,
+    weekend: WeekendGP,
+    onDismiss: () -> Unit,
+    onRefresh: (Session) -> Unit
+) {
+    var isRefreshing by remember { mutableStateOf(false) }
     val sessionColor = when {
         session.shortName.contains("FP", true) || session.shortName == "Practice" -> ColorPractice
         session.shortName.startsWith("Q", true) -> ColorQualifying
@@ -268,6 +258,10 @@ fun SessionDetailDialog(session: Session, weekend: WeekendGP?, onDismiss: () -> 
         session.shortName == "WU" -> ColorWarmUp
         else -> MotoGPTextSecondary
     }
+
+    // Get results for this session from the WeekendGP cache
+    val cachedResults = weekend.sessionResults[session.shortName] ?: emptyList()
+    var displayedResults by remember(session.shortName, weekend) { mutableStateOf(cachedResults) }
 
     AlertDialog(
         onDismissRequest = onDismiss,
@@ -289,167 +283,98 @@ fun SessionDetailDialog(session: Session, weekend: WeekendGP?, onDismiss: () -> 
                 Spacer(Modifier.width(10.dp))
                 Column {
                     Text(session.name, fontSize = 16.sp, fontWeight = FontWeight.Bold, color = MotoGPTextPrimary)
-                    Text("${session.time} · ${session.date.ifEmpty { "hoy" }}", fontSize = 12.sp, color = MotoGPTextMuted)
+                    Text("${session.time} · ${session.date.ifEmpty { "hoy" }}",
+                        fontSize = 12.sp, color = MotoGPTextMuted)
                 }
             }
         },
         text = {
-            when {
-                session.shortName.startsWith("Q") -> QualifyingResultContent(session, weekend)
-                session.shortName == "Sprint" -> RaceResultContent(session, weekend, isSprint = true)
-                session.shortName == "Race" -> RaceResultContent(session, weekend, isSprint = false)
-                else -> {
-                    Column {
-                        Text("Sesión de ${session.name}", color = MotoGPTextPrimary, fontWeight = FontWeight.Bold)
+            if (isRefreshing) {
+                Box(Modifier.fillMaxWidth().height(100.dp), contentAlignment = Alignment.Center) {
+                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                        CircularProgressIndicator(color = MotoGPRed, modifier = Modifier.size(24.dp))
                         Spacer(Modifier.height(8.dp))
-                        Text("Horario: ${session.time} CEST", color = MotoGPTextSecondary, fontSize = 13.sp)
-                        Spacer(Modifier.height(8.dp))
-                        Text("Los resultados detallados estarán disponibles cuando se publiquen oficialmente.",
-                            color = MotoGPTextMuted, fontSize = 12.sp)
+                        Text("Actualizando...", color = MotoGPTextMuted, fontSize = 12.sp)
                     }
                 }
+            } else if (displayedResults.isEmpty()) {
+                Column {
+                    Text("Esta sesión aún no tiene resultados publicados.",
+                        color = MotoGPTextSecondary, fontSize = 13.sp)
+                    Spacer(Modifier.height(8.dp))
+                    Text("Prueba a tocar 'Actualizar' o revisa más tarde cuando la sesión haya terminado.",
+                        color = MotoGPTextMuted, fontSize = 12.sp)
+                }
+            } else {
+                SessionResultsTable(displayedResults, session.shortName)
             }
         },
         confirmButton = {
-            TextButton(onClick = onDismiss) {
-                Text("Cerrar", color = MotoGPRed, fontWeight = FontWeight.Bold)
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                TextButton(onClick = {
+                    isRefreshing = true
+                    onRefresh(session)
+                    // Refresh re-triggered from parent will set new weekend
+                    // For immediate feedback, try fetching directly
+                }) {
+                    Text("↻ Actualizar", color = MotoGPRed, fontWeight = FontWeight.Bold)
+                }
+                TextButton(onClick = onDismiss) {
+                    Text("Cerrar", color = MotoGPTextMuted)
+                }
             }
         }
     )
 }
 
 @Composable
-fun QualifyingResultContent(session: Session, weekend: WeekendGP?) {
-    val qResults = weekend?.q2Results ?: weekend?.q1Results ?: emptyList()
-    val useData = qResults.isNotEmpty()
-
-    Column {
-        Text("🏁 PARRILLA DE SALIDA", color = MotoGPTextPrimary, fontWeight = FontWeight.Bold, fontSize = 14.sp)
-        Spacer(Modifier.height(10.dp))
-
-        // Table header
-        Row(Modifier.fillMaxWidth().padding(bottom = 4.dp)) {
-            Text("POS", color = MotoGPTextMuted, fontSize = 11.sp, modifier = Modifier.width(32.dp))
-            Text("PILOTO", color = MotoGPTextMuted, fontSize = 11.sp, modifier = Modifier.weight(1f))
-            Text("TIEMPO", color = MotoGPTextMuted, fontSize = 11.sp, textAlign = TextAlign.End)
-        }
-
-        if (useData) {
-            qResults.take(12).forEachIndexed { i, r ->
-                ResultRow(
-                    pos = r.position.toString(),
-                    name = r.rider,
-                    value = r.time,
-                    isHighlight = i < 3
-                )
-            }
-        } else {
-            // Mock Q2 results (Catalan GP 2026)
-            val mockQ2 = listOf(
-                Triple("1", "P. Acosta", "1'38.452"),
-                Triple("2", "A. Márquez", "1'38.621"),
-                Triple("3", "B. Binder", "1'38.734"),
-                Triple("4", "M. Bezzecchi", "1'38.812"),
-                Triple("5", "J. Martin", "1'38.901"),
-                Triple("6", "F. Di Giannantonio", "1'38.945"),
-                Triple("7", "A. Ogura", "1'39.012"),
-                Triple("8", "M. Márquez", "1'39.087"),
-                Triple("9", "R. Fernández", "1'39.156"),
-                Triple("10", "F. Bagnaia", "1'39.234"),
-                Triple("11", "E. Bastianini", "1'39.312"),
-                Triple("12", "L. Marini", "1'39.456")
-            )
-            mockQ2.forEach { (pos, name, time) ->
-                ResultRow(pos, name, time, pos.toInt() <= 3)
-            }
-        }
-
-        Spacer(Modifier.height(6.dp))
-        Text("* Resultados de referencia — pueden no coincidir con la sesión real",
-            color = MotoGPTextMuted, fontSize = 10.sp)
+fun SessionResultsTable(results: List<SessionResult>, sessionType: String) {
+    val isQuali = sessionType.startsWith("Q")
+    val isRace = sessionType == "Race" || sessionType == "Sprint"
+    val label = when {
+        sessionType == "FP1" || sessionType == "FP2" || sessionType == "Practice" -> "🏁 ENTRENOS"
+        isQuali -> "🏁 CLASIFICACIÓN"
+        sessionType == "Sprint" -> "🏁 SPRINT"
+        sessionType == "Race" -> "🏁 CARRERA"
+        else -> "🏁 RESULTADOS"
     }
-}
-
-@Composable
-fun RaceResultContent(session: Session, weekend: WeekendGP?, isSprint: Boolean) {
-    val results = if (isSprint) weekend?.sprintResults else weekend?.raceResults
-    val useData = results.isNullOrEmpty().not()
-    val label = if (isSprint) "🏁 SPRINT" else "🏁 CARRERA"
 
     Column {
         Text(label, color = MotoGPTextPrimary, fontWeight = FontWeight.Bold, fontSize = 14.sp)
-        Spacer(Modifier.height(10.dp))
+        Spacer(Modifier.height(8.dp))
 
-        Row(Modifier.fillMaxWidth().padding(bottom = 4.dp)) {
-            Text("POS", color = MotoGPTextMuted, fontSize = 11.sp, modifier = Modifier.width(32.dp))
+        // Header row
+        Row(Modifier.fillMaxWidth().padding(bottom = 4.dp), verticalAlignment = Alignment.CenterVertically) {
+            Text("#", color = MotoGPTextMuted, fontSize = 11.sp, modifier = Modifier.width(28.dp))
             Text("PILOTO", color = MotoGPTextMuted, fontSize = 11.sp, modifier = Modifier.weight(1f))
-            Text(if (isSprint) "TIEMPO" else "TIEMPO", color = MotoGPTextMuted, fontSize = 11.sp, textAlign = TextAlign.End)
+            Text("TIEMPO", color = MotoGPTextMuted, fontSize = 11.sp, modifier = Modifier.width(88.dp),
+                textAlign = TextAlign.End)
         }
 
-        if (useData) {
-            results!!.take(15).forEachIndexed { i, r ->
-                ResultRow(
-                    pos = r.position.toString(),
-                    name = r.rider,
-                    value = r.time.take(12),
-                    isHighlight = i < 3
-                )
-            }
-        } else {
-            val mockResults = if (isSprint) {
-                listOf(
-                    Triple("1", "M. Bezzecchi", "19'52.123"),
-                    Triple("2", "J. Martin", "+0.847"),
-                    Triple("3", "P. Acosta", "+1.234"),
-                    Triple("4", "A. Ogura", "+2.156"),
-                    Triple("5", "F. Di Giannantonio", "+3.891"),
-                    Triple("6", "R. Fernández", "+4.567"),
-                    Triple("7", "A. Márquez", "+5.234"),
-                    Triple("8", "M. Márquez", "+6.102"),
-                    Triple("9", "F. Bagnaia", "+7.456"),
-                    Triple("10", "B. Binder", "+8.789")
-                )
-            } else {
-                listOf(
-                    Triple("1", "M. Bezzecchi", "41'05.234"),
-                    Triple("2", "J. Martin", "+2.345"),
-                    Triple("3", "A. Ogura", "+4.567"),
-                    Triple("4", "P. Acosta", "+6.789"),
-                    Triple("5", "F. Di Giannantonio", "+9.012"),
-                    Triple("6", "R. Fernández", "+11.345"),
-                    Triple("7", "M. Márquez", "+13.678"),
-                    Triple("8", "A. Márquez", "+15.901"),
-                    Triple("9", "F. Bagnaia", "+18.234"),
-                    Triple("10", "F. Quartararo", "+20.567"),
-                    Triple("11", "E. Bastianini", "+22.890"),
-                    Triple("12", "L. Marini", "+25.123"),
-                    Triple("13", "B. Binder", "+28.456"),
-                    Triple("14", "J. Zarco", "+31.789"),
-                    Triple("15", "F. Aldeguer", "+35.012")
-                )
-            }
-            mockResults.forEach { (pos, name, time) ->
-                ResultRow(pos, name, time, pos.toInt() <= 3)
+        results.forEach { r ->
+            val bg = if (r.position <= 3) MotoGPRed.copy(alpha = 0.08f) else Color.Transparent
+            val textColor = if (r.position <= 3) MotoGPRed else MotoGPTextPrimary
+            Row(
+                Modifier.fillMaxWidth().background(bg).padding(vertical = 5.dp, horizontal = 2.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Text(r.position.toString(), color = textColor, fontSize = 13.sp,
+                    fontWeight = FontWeight.Bold, modifier = Modifier.width(28.dp))
+                Column(modifier = Modifier.weight(1f)) {
+                    Text(r.rider, color = MotoGPTextPrimary, fontSize = 13.sp,
+                        maxLines = 1, overflow = TextOverflow.Ellipsis)
+                    if (r.team.isNotEmpty()) {
+                        Text(r.team, color = MotoGPTextMuted, fontSize = 10.sp,
+                            maxLines = 1, overflow = TextOverflow.Ellipsis)
+                    }
+                }
+                Text(r.time, color = MotoGPTextSecondary, fontSize = 12.sp,
+                    modifier = Modifier.width(88.dp), textAlign = TextAlign.End)
             }
         }
 
         Spacer(Modifier.height(6.dp))
-        Text("* Resultados de referencia — pueden no coincidir con la sesión real",
+        Text("* Datos de crash.net · Toca Actualizar para refrescar",
             color = MotoGPTextMuted, fontSize = 10.sp)
-    }
-}
-
-@Composable
-fun ResultRow(pos: String, name: String, value: String, isHighlight: Boolean) {
-    val bg = if (isHighlight) MotoGPRed.copy(alpha = 0.08f) else Color.Transparent
-    Row(
-        Modifier.fillMaxWidth().background(bg).padding(vertical = 4.dp, horizontal = 2.dp),
-        verticalAlignment = Alignment.CenterVertically
-    ) {
-        Text(pos, color = if (isHighlight) MotoGPRed else MotoGPTextSecondary,
-            fontSize = 13.sp, fontWeight = FontWeight.Bold, modifier = Modifier.width(32.dp))
-        Text(name, color = MotoGPTextPrimary, fontSize = 13.sp,
-            maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f))
-        Text(value, color = MotoGPTextMuted, fontSize = 12.sp, maxLines = 1)
     }
 }

@@ -16,25 +16,15 @@ data class WeekendGP(
     val dateRange: String,
     val isCurrent: Boolean = false,
     val sessions: List<Session> = emptyList(),
-    val q1Results: List<QualifyingResult> = emptyList(),
-    val q2Results: List<QualifyingResult> = emptyList(),
-    val sprintResults: List<RaceResult> = emptyList(),
-    val raceResults: List<RaceResult> = emptyList()
+    val sessionResults: Map<String, List<SessionResult>> = emptyMap() // shortName -> results
 )
 
-data class QualifyingResult(
-    val position: Int,
-    val rider: String,
-    val team: String,
-    val time: String
-)
-
-data class RaceResult(
+data class SessionResult(
     val position: Int,
     val rider: String,
     val team: String,
     val time: String,
-    val gap: String = ""
+    val laps: String = ""
 )
 
 data class RiderStanding(
@@ -111,3 +101,24 @@ data class NewsArticle(
     val url: String,
     val date: String
 )
+
+// Session definition for calendar (FP1, Practice, Q1, Q2, Sprint, Race)
+data class CalendarSession(
+    val shortName: String,
+    val fullName: String,
+    val time: String // HH:MM format
+)
+
+// All GP sessions with standard times
+object GpSessions {
+    val all = listOf(
+        CalendarSession("FP1", "Entrenos Libres 1", "10:45"),
+        CalendarSession("Practice", "Practice", "15:00"),
+        CalendarSession("FP2", "Entrenos Libres 2", "10:10"),
+        CalendarSession("Q1", "Clasificación 1", "10:50"),
+        CalendarSession("Q2", "Clasificación 2", "11:15"),
+        CalendarSession("Sprint", "Sprint", "15:00"),
+        CalendarSession("WU", "Warm Up", "09:40"),
+        CalendarSession("Race", "Carrera", "14:00")
+    )
+}
