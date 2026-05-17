@@ -8,7 +8,7 @@ import java.util.Locale
 
 object Scraper {
     private const val SCHEDULE_URL = "https://www.autosport.com/motogp/schedule/2026/"
-    private const val STANDINGS_URL = "https://www.motorsport.com/motogp/standings/2026/"
+    private const val STANDINGS_URL = "https://motomatters.com/standings/motogp"
     private const val RECORDS_URL = "https://www.spotvnow.com/read/from-assen-to-sepang-all-time-lap-records-at-motogp-2026-circuits/"
     private const val TIMEOUT = 10000
 
@@ -288,35 +288,32 @@ object Scraper {
         val riders = mutableListOf<RiderStanding>()
         val manufacturers = mutableListOf<ManufacturerStanding>()
 
-        val text = doc.body().text()
-
-        val riderPattern = Regex("(\\d+)\\s+([A-Z]\\.\\s*[A-Za-zÀ-ÿ]+)\\s*([A-Za-zÀ-ÿ0-9\\s]+?)\\s+(\\d{2,3})")
-        var pos = 1
-        for (match in riderPattern.findAll(text)) {
-            val rider = match.groupValues[2].trim()
-            val team = match.groupValues[3].trim()
-            val points = match.groupValues[4].toIntOrNull() ?: 0
-            if (riders.size < 26) {
-                riders.add(RiderStanding(pos, rider, team, "", points))
-                pos++
+        // motomatters.com: first table is latest standings (6 cols: Pos, No., Rider, Bike, Points, Deficit)
+        val table = doc.select("table").firstOrNull()
+        if (table != null) {
+            val rows = table.select("tr")
+            val manuPoints = mutableMapOf<String, Int>()
+            for (i in 1 until rows.size) {
+                val cells = rows[i].select("td")
+                if (cells.size < 5) continue
+                val pos = cells[0].text().trim().toIntOrNull() ?: continue
+                val riderName = cells[2].text().trim()
+                val bike = cells[3].text().trim()
+                val points = cells[4].text().trim().toIntOrNull() ?: continue
+                // Store bike (manufacturer) as team
+                riders.add(RiderStanding(pos, riderName, bike, bike, points))
+                manuPoints[bike] = manuPoints.getOrDefault(bike, 0) + points
+            }
+            // Build manufacturer standings sorted by points descending
+            val sortedManu = manuPoints.entries.sortedByDescending { it.value }
+            for ((i, entry) in sortedManu.withIndex()) {
+                manufacturers.add(ManufacturerStanding(i + 1, entry.key, entry.value))
             }
         }
 
-        if (riders.isEmpty()) return Pair(getHardcodedRiders(), getHardcodedManufacturers())
-
-        val manuPattern = Regex("(Aprilia|Ducati|KTM|Honda|Yamaha)(?:.*?)(\\d{2,3})")
-        for (match in manuPattern.findAll(text)) {
-            val mfr = match.groupValues[1]
-            val pts = match.groupValues[2].toIntOrNull() ?: 0
-            if (manufacturers.none { it.manufacturer == mfr }) {
-                manufacturers.add(ManufacturerStanding(manufacturers.size + 1, mfr, pts))
-            }
+        if (riders.isEmpty()) {
+            return Pair(getHardcodedRiders(), getHardcodedManufacturers())
         }
-
-        if (manufacturers.isEmpty()) {
-            manufacturers.addAll(getHardcodedManufacturers())
-        }
-
         return Pair(riders, manufacturers)
     }
 
