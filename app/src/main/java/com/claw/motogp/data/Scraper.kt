@@ -1,5 +1,7 @@
 package com.claw.motogp.data
 
+import org.json.JSONArray
+import org.json.JSONObject
 import org.jsoup.Jsoup
 import org.jsoup.nodes.Document
 import java.text.SimpleDateFormat
@@ -276,12 +278,105 @@ object Scraper {
     }
 
     fun fetchStandings(): Pair<List<RiderStanding>, List<ManufacturerStanding>> {
+        // Try official MotoGP API first
+        try {
+            return fetchWorldStandingsFromApi()
+        } catch (_: Exception) {
+            // Fall back to motomatters
+        }
+
         return try {
             val doc = Jsoup.connect(STANDINGS_URL).timeout(TIMEOUT).get()
             parseStandings(doc)
         } catch (e: Exception) {
             Pair(getHardcodedRiders(), getHardcodedManufacturers())
         }
+    }
+
+    /**
+     * Fetch real world standings from official MotoGP API.
+     */
+    private fun fetchWorldStandingsFromApi(): Pair<List<RiderStanding>, List<ManufacturerStanding>> {
+        val seasonsJson = Jsoup.connect("https://api.pulselive.motogp.com/motogp/v1/results/seasons")
+            .ignoreContentType(true).timeout(TIMEOUT).execute().body()
+        val seasons = org.json.JSONArray(seasonsJson)
+        val currentSeason = (0 until seasons.length())
+            .map { seasons.getJSONObject(it) }
+            .firstOrNull { it.optBoolean("current") }
+            ?: throw Exception("No current season")
+
+        val seasonUuid = currentSeason.getString("id")
+
+        val catsJson = Jsoup.connect("https://api.pulselive.motogp.com/motogp/v1/results/categories?seasonUuid=$seasonUuid")
+            .ignoreContentType(true).timeout(TIMEOUT).execute().body()
+        val categories = org.json.JSONArray(catsJson)
+        val motogpCat = (0 until categories.length())
+            .map { categories.getJSONObject(it) }
+            .firstOrNull { it.getString("name").contains("MotoGP") }
+            ?: throw Exception("No MotoGP category")
+        val catUuid = motogpCat.getString("id")
+
+        val standingsJson = Jsoup.connect("https://api.pulselive.motogp.com/motogp/v2/results/world-standings")
+            .data("type", "rider")
+            .data("season", seasonUuid)
+            .data("category", catUuid)
+            .ignoreContentType(true).timeout(TIMEOUT).execute().body()
+
+        val root = org.json.JSONObject(standingsJson)
+        val riderArr = root.getJSONObject("classification").getJSONArray("rider")
+
+        val riders = mutableListOf<RiderStanding>()
+        val manuPoints = mutableMapOf<String, Int>()
+
+        for (i in 0 until riderArr.length()) {
+            val r = riderArr.getJSONObject(i)
+            val riderData = r.getJSONObject("rider")
+            val constructor = r.optJSONObject("constructor")
+            val bike = constructor?.optString("name", "") ?: ""
+
+            val position = r.getInt("position")
+            val fullName = riderData.getString("full_name")
+            val teamName = r.optString("team_name", "")
+            val points = r.getInt("points")
+            val deficit = r.optInt("pointsFromFirst", 0)
+            val wins = r.optInt("race_wins", 0)
+            val podiums = r.optInt("podiums", 0)
+            val country = riderData.optJSONObject("country")?.optString("iso", "") ?: ""
+
+            val lastPos = mutableListOf<Int>()
+            val lastPosObj = r.optJSONObject("last_positions")
+            if (lastPosObj != null) {
+                for (key in lastPosObj.keys()) {
+                    val v = lastPosObj.optInt(key, -1)
+                    if (v > 0) lastPos.add(v)
+                }
+            }
+
+            val deficitStr = if (deficit == 0) "-" else "-$deficit"
+
+            riders.add(RiderStanding(
+                position = position,
+                rider = fullName,
+                team = teamName,
+                bike = bike,
+                points = points,
+                deficit = deficitStr,
+                wins = wins,
+                podiums = podiums,
+                lastPositions = lastPos.takeLast(3),
+                countryIso = country
+            ))
+            if (bike.isNotEmpty()) {
+                manuPoints[bike] = manuPoints.getOrDefault(bike, 0) + points
+            }
+        }
+
+        val sortedManu = manuPoints.entries.sortedByDescending { it.value }
+        val manufacturers = sortedManu.mapIndexed { i, entry ->
+            ManufacturerStanding(i + 1, entry.key, entry.value)
+        }
+
+        return Pair(riders, manufacturers)
     }
 
     fun parseStandings(doc: Document): Pair<List<RiderStanding>, List<ManufacturerStanding>> {

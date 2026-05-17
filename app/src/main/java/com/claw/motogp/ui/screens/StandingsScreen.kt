@@ -1,8 +1,6 @@
 package com.claw.motogp.ui.screens
 
 import androidx.compose.foundation.background
-import androidx.compose.foundation.border
-import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
@@ -35,7 +33,6 @@ fun StandingsScreen() {
     val champInfo = remember { ChampionshipInfo.calculate(completedRounds) }
 
     fun loadData() {
-        isLoading = true
         scope.launch {
             try {
                 val (r, m) = withContext(Dispatchers.IO) { Scraper.fetchStandings() }
@@ -53,7 +50,7 @@ fun StandingsScreen() {
             .fillMaxSize()
             .background(MotoGPBg)
     ) {
-        // Header with championship info
+        // Header
         Box(
             modifier = Modifier
                 .fillMaxWidth()
@@ -88,7 +85,10 @@ fun StandingsScreen() {
                 )
             }
             Spacer(Modifier.weight(1f))
-            TextButton(onClick = { showCharts = !showCharts }) {
+            TextButton(onClick = {
+                showCharts = !showCharts
+                if (!showCharts) loadData() // Refresh when going back to table
+            }) {
                 Text(if (showCharts) "📊 Tabla" else "📈 Evolución", color = MotoGPRed, fontSize = 12.sp)
             }
         }
@@ -96,6 +96,10 @@ fun StandingsScreen() {
         if (isLoading) {
             Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
                 CircularProgressIndicator(color = MotoGPRed)
+            }
+        } else if (riders.isEmpty() && manufacturers.isEmpty() && selectedTab == 0) {
+            Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                Text("Sin conexión", color = MotoGPTextMuted, fontSize = 16.sp)
             }
         } else if (selectedTab == 0) {
             if (showCharts) {
@@ -117,20 +121,21 @@ fun StandingsScreen() {
 fun RiderStandingsTable(riders: List<RiderStanding>, champInfo: ChampionshipInfo) {
     LazyColumn(
         modifier = Modifier.fillMaxSize(),
-        contentPadding = PaddingValues(16.dp),
-        verticalArrangement = Arrangement.spacedBy(6.dp)
+        contentPadding = PaddingValues(horizontal = 12.dp, vertical = 8.dp),
+        verticalArrangement = Arrangement.spacedBy(4.dp)
     ) {
         // Header
         item {
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .padding(horizontal = 4.dp, vertical = 4.dp)
+                    .padding(horizontal = 4.dp, vertical = 2.dp)
             ) {
-                Text("#", color = MotoGPTextMuted, fontSize = 11.sp, modifier = Modifier.width(28.dp))
-                Text("Piloto", color = MotoGPTextMuted, fontSize = 11.sp, modifier = Modifier.weight(1f))
-                Text("Moto", color = MotoGPTextMuted, fontSize = 11.sp, modifier = Modifier.width(50.dp))
-                Text("Pts", color = MotoGPTextMuted, fontSize = 11.sp, modifier = Modifier.width(36.dp), textAlign = TextAlign.End)
+                Text("#", color = MotoGPTextMuted, fontSize = 10.sp, modifier = Modifier.width(22.dp))
+                Text("Piloto", color = MotoGPTextMuted, fontSize = 10.sp, modifier = Modifier.weight(1f))
+                Text("Vic", color = MotoGPTextMuted, fontSize = 10.sp, modifier = Modifier.width(28.dp), textAlign = TextAlign.Center)
+                Text("Pod", color = MotoGPTextMuted, fontSize = 10.sp, modifier = Modifier.width(26.dp), textAlign = TextAlign.Center)
+                Text("Pts", color = MotoGPTextMuted, fontSize = 10.sp, modifier = Modifier.width(40.dp), textAlign = TextAlign.End)
             }
         }
 
@@ -144,43 +149,63 @@ fun RiderStandingsTable(riders: List<RiderStanding>, champInfo: ChampionshipInfo
                 colors = CardDefaults.cardColors(containerColor = bgColor),
                 shape = RoundedCornerShape(8.dp)
             ) {
-                Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(12.dp),
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    // Position
-                    Text(
-                        text = "${rider.position}",
-                        color = posColor,
-                        fontWeight = FontWeight.Bold,
-                        fontSize = 14.sp,
-                        modifier = Modifier.width(28.dp)
-                    )
+                Column {
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(start = 12.dp, end = 12.dp, top = 10.dp, bottom = 4.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        // Position
+                        Text(
+                            text = "${rider.position}",
+                            color = posColor,
+                            fontWeight = FontWeight.Bold,
+                            fontSize = 14.sp,
+                            modifier = Modifier.width(22.dp)
+                        )
 
-                    // Rider name + team
-                    Column(modifier = Modifier.weight(1f)) {
-                        Text(rider.rider, color = MotoGPTextPrimary, fontWeight = FontWeight.Bold, fontSize = 14.sp)
-                        Text(rider.team, color = MotoGPTextMuted, fontSize = 11.sp)
+                        // Rider name + team + country flag
+                        Column(modifier = Modifier.weight(1f)) {
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                val flag = flagEmoji(rider.countryIso)
+                                Text("$flag ", fontSize = 14.sp)
+                                Text(rider.rider, color = MotoGPTextPrimary, fontWeight = FontWeight.Bold, fontSize = 14.sp)
+                            }
+                            Text(rider.team, color = MotoGPTextMuted, fontSize = 10.sp)
+                        }
+
+                        // Wins
+                        Column(horizontalAlignment = Alignment.CenterHorizontally, modifier = Modifier.width(28.dp)) {
+                            Text("${rider.wins}", color = if (rider.wins > 0) MotoGPSuccess else MotoGPTextMuted, fontSize = 14.sp, fontWeight = FontWeight.Bold)
+                            Text("V", color = MotoGPTextMuted, fontSize = 9.sp)
+                        }
+
+                        // Podiums
+                        Column(horizontalAlignment = Alignment.CenterHorizontally, modifier = Modifier.width(26.dp)) {
+                            Text("${rider.podiums}", color = if (rider.podiums > 0) MotoGPGold else MotoGPTextMuted, fontSize = 14.sp, fontWeight = FontWeight.Bold)
+                            Text("P", color = MotoGPTextMuted, fontSize = 9.sp)
+                        }
+
+                        // Points
+                        Column(horizontalAlignment = Alignment.End) {
+                            Text("${rider.points}", color = MotoGPTextPrimary, fontWeight = FontWeight.Bold, fontSize = 16.sp, modifier = Modifier.width(40.dp))
+                        }
                     }
 
-                    // Bike
-                    Text(
-                        rider.bike.ifEmpty { getBikeFromTeam(rider.team) },
-                        color = MotoGPTextSecondary,
-                        fontSize = 11.sp,
-                        modifier = Modifier.width(50.dp)
-                    )
-
-                    // Points with progress bar
-                    Column(horizontalAlignment = Alignment.End) {
-                        Text("${rider.points}", color = MotoGPTextPrimary, fontWeight = FontWeight.Bold, fontSize = 16.sp)
+                    // Gap bar + last positions
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(start = 12.dp, end = 12.dp, bottom = 8.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        // Progress bar
                         if (riders.isNotEmpty()) {
                             val maxPts = riders.first().points.coerceAtLeast(1)
                             Box(
                                 modifier = Modifier
-                                    .width(36.dp)
+                                    .weight(1f)
                                     .height(3.dp)
                                     .clip(RoundedCornerShape(2.dp))
                                     .background(MotoGPProgressBg)
@@ -193,11 +218,45 @@ fun RiderStandingsTable(riders: List<RiderStanding>, champInfo: ChampionshipInfo
                                 )
                             }
                         }
+
+                        Spacer(Modifier.width(8.dp))
+
+                        // Gap
+                        Text(rider.deficit.ifEmpty { "-" },
+                            color = MotoGPTextMuted, fontSize = 10.sp,
+                            modifier = Modifier.width(56.dp), textAlign = TextAlign.End)
+
+                        // Last positions
+                        Row(
+                            horizontalArrangement = Arrangement.spacedBy(2.dp),
+                            modifier = Modifier.width(44.dp)
+                        ) {
+                            val laps = rider.lastPositions.ifEmpty { emptyList() }
+                            for (pos in laps) {
+                                val lpColor = when {
+                                    pos <= 3 -> MotoGPGold
+                                    pos <= 7 -> MotoGPSuccess
+                                    pos <= 12 -> MotoGPTextSecondary
+                                    else -> MotoGPRed
+                                }
+                                Text("$pos", color = lpColor, fontSize = 10.sp, fontWeight = FontWeight.Bold)
+                            }
+                        }
                     }
                 }
             }
         }
     }
+}
+
+private fun flagEmoji(iso: String): String = when (iso.uppercase()) {
+    "ES" -> "🇪🇸"; "IT" -> "🇮🇹"; "FR" -> "🇫🇷"; "JP" -> "🇯🇵"
+    "ZA" -> "🇿🇦"; "AU" -> "🇦🇺"; "BR" -> "🇧🇷"; "US" -> "🇺🇸"
+    "DE" -> "🇩🇪"; "GB" -> "🇬🇧"; "NL" -> "🇳🇱"; "TR" -> "🇹🇷"
+    "CZ" -> "🇨🇿"; "AT" -> "🇦🇹"; "ID" -> "🇮🇩"; "MY" -> "🇲🇾"
+    "AR" -> "🇦🇷"; "PT" -> "🇵🇹"; "IE" -> "🇮🇪"; "FI" -> "🇫🇮"
+    "CO" -> "🇨🇴"; "BE" -> "🇧🇪"; "NZ" -> "🇳🇿"
+    else -> ""
 }
 
 @Composable
@@ -243,6 +302,27 @@ fun ManufacturerStandingsTable(manufacturers: List<ManufacturerStanding>) {
 
                     Text(mfr.manufacturer, color = MotoGPTextPrimary, fontWeight = FontWeight.Bold,
                         fontSize = 16.sp, modifier = Modifier.weight(1f))
+
+                    // Power bar
+                    if (manufacturers.isNotEmpty()) {
+                        val maxPts = manufacturers.first().points.coerceAtLeast(1)
+                        Box(
+                            modifier = Modifier
+                                .width(60.dp)
+                                .height(6.dp)
+                                .clip(RoundedCornerShape(3.dp))
+                                .background(MotoGPProgressBg)
+                        ) {
+                            Box(
+                                modifier = Modifier
+                                    .fillMaxHeight()
+                                    .fillMaxWidth(fraction = mfr.points.toFloat() / maxPts)
+                                    .background(mfrColor)
+                            )
+                        }
+                    }
+                    Spacer(Modifier.width(12.dp))
+
                     Text("${mfr.points}", color = MotoGPTextPrimary, fontWeight = FontWeight.Bold,
                         fontSize = 18.sp)
                 }
@@ -302,13 +382,4 @@ fun EvolutionChart(
             }
         }
     }
-}
-
-private fun getBikeFromTeam(team: String): String = when {
-    team.contains("Aprilia", ignoreCase = true) -> "Aprilia"
-    team.contains("Ducati", ignoreCase = true) || team.contains("VR46", ignoreCase = true) -> "Ducati"
-    team.contains("KTM", ignoreCase = true) || team.contains("Tech3", ignoreCase = true) -> "KTM"
-    team.contains("Honda", ignoreCase = true) || team.contains("LCR", ignoreCase = true) -> "Honda"
-    team.contains("Yamaha", ignoreCase = true) || team.contains("Pramac", ignoreCase = true) -> "Yamaha"
-    else -> "—"
 }
