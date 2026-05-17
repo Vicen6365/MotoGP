@@ -32,31 +32,32 @@ fun CalendarScreen() {
     var events by remember { mutableStateOf<List<CalendarEvent>>(emptyList()) }
     var isLoading by remember { mutableStateOf(true) }
     var expandedGp by remember { mutableStateOf<Int?>(null) }
-    var sessionResults by remember { mutableStateOf<Map<String, Map<String, List<SessionResult>>>>(emptyMap()) }
+    var expandedSession by remember { mutableStateOf<String?>(null) } // "Sprint" or "Race"
+    var gpResults by remember { mutableStateOf<Map<String, Map<String, List<SessionResult>>>>(emptyMap()) }
+    var loadingResults by remember { mutableStateOf<Set<String>>(emptySet()) }
     val scope = rememberCoroutineScope()
 
-    fun loadData() {
+    fun loadCalendar() {
         isLoading = true
         scope.launch {
-            val cal = withContext(Dispatchers.IO) { Scraper.fetchSchedule() }
-            events = cal
-            // Load results for all completed GPs
-            val completedGps = cal.filter { it.isCompleted }
-            val results = mutableMapOf<String, Map<String, List<SessionResult>>>()
-            for (gp in completedGps) {
-                try {
-                    val gpResults = withContext(Dispatchers.IO) { Scraper.fetchSessionResults(gp.name) }
-                    if (gpResults.isNotEmpty()) {
-                        results[gp.name] = gpResults
-                    }
-                } catch (_: Exception) {}
-            }
-            sessionResults = results
+            events = withContext(Dispatchers.IO) { Scraper.fetchSchedule() }
             isLoading = false
         }
     }
 
-    LaunchedEffect(Unit) { loadData() }
+    fun loadGpResults(gpName: String) {
+        if (gpName in gpResults || gpName in loadingResults) return
+        loadingResults = loadingResults + gpName
+        scope.launch {
+            try {
+                val results = withContext(Dispatchers.IO) { Scraper.fetchSessionResults(gpName) }
+                gpResults = gpResults + (gpName to results)
+            } catch (_: Exception) {}
+            loadingResults = loadingResults - gpName
+        }
+    }
+
+    LaunchedEffect(Unit) { loadCalendar() }
 
     Column(modifier = Modifier.fillMaxSize().background(MotoGPBg)) {
         Box(
@@ -72,7 +73,7 @@ fun CalendarScreen() {
         }
 
         Button(
-            onClick = { loadData() },
+            onClick = { loadCalendar() },
             modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp),
             colors = ButtonDefaults.buttonColors(containerColor = MotoGPRed),
             enabled = !isLoading
@@ -126,9 +127,21 @@ fun CalendarScreen() {
                         event = event,
                         isExpanded = isExpanded,
                         isCurrent = i == currentIndex,
-                        onToggle = { expandedGp = if (isExpanded) null else i },
+                        onToggle = {
+                            val newExpanded = if (isExpanded) null else i
+                            expandedGp = newExpanded
+                            expandedSession = null
+                            // Load results on demand when expanding a past GP
+                            if (newExpanded != null && event.isCompleted) {
+                                loadGpResults(event.name)
+                            }
+                        },
                         onAddSession = { sessionName -> addSessionToCalendar(context, event, sessionName) },
-                        gpResults = sessionResults[event.name] ?: emptyMap()
+                        gpResults = gpResults[event.name] ?: emptyMap(),
+                        expandedSession = expandedSession,
+                        onToggleSession = { session ->
+                            expandedSession = if (expandedSession == session) null else session
+                        }
                     )
                 }
             }
@@ -143,7 +156,9 @@ fun GpCard(
     isCurrent: Boolean,
     onToggle: () -> Unit,
     onAddSession: (String) -> Unit,
-    gpResults: Map<String, List<SessionResult>>
+    gpResults: Map<String, List<SessionResult>>,
+    expandedSession: String?,
+    onToggleSession: (String) -> Unit
 ) {
     val bgColor = if (event.isCompleted) MotoGPSurface
         else if (isCurrent) MotoGPSurfaceVariant
@@ -169,54 +184,41 @@ fun GpCard(
                 modifier = Modifier.fillMaxWidth().clickable { onToggle() }.padding(12.dp),
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                // Round number
                 Box(
-                    modifier = Modifier
-                        .size(36.dp)
-                        .clip(RoundedCornerShape(8.dp))
-                        .background(roundBg),
+                    modifier = Modifier.size(36.dp).clip(RoundedCornerShape(8.dp)).background(roundBg),
                     contentAlignment = Alignment.Center
                 ) {
-                    Text(
-                        event.round.toString(),
-                        color = accentColor,
-                        fontWeight = FontWeight.Bold, fontSize = 16.sp
-                    )
+                    Text(event.round.toString(), color = accentColor,
+                        fontWeight = FontWeight.Bold, fontSize = 16.sp)
                 }
-
                 Spacer(Modifier.width(12.dp))
-
                 Column(modifier = Modifier.weight(1f)) {
-                    Text(event.name,
-                        color = MotoGPTextPrimary, fontSize = 14.sp, fontWeight = FontWeight.Bold,
-                        maxLines = 1, overflow = TextOverflow.Ellipsis)
+                    Text(event.name, color = MotoGPTextPrimary, fontSize = 14.sp,
+                        fontWeight = FontWeight.Bold, maxLines = 1, overflow = TextOverflow.Ellipsis)
                     Text(
                         if (event.dateRange.isNotEmpty()) "${event.dateRange} · ${event.circuit}"
                         else event.circuit,
                         color = MotoGPTextMuted, fontSize = 11.sp,
-                        maxLines = 1, overflow = TextOverflow.Ellipsis
-                    )
+                        maxLines = 1, overflow = TextOverflow.Ellipsis)
                 }
-
-                // Status badge
                 Text(statusText, color = accentColor, fontWeight = FontWeight.Bold, fontSize = 18.sp)
             }
 
-            // Expanded panel: show results for past GPs, schedule for current/future
             AnimatedVisibility(visible = isExpanded) {
                 Column(modifier = Modifier.padding(start = 12.dp, end = 12.dp, bottom = 12.dp)) {
                     Divider(color = MotoGPTextMuted.copy(alpha = 0.2f))
                     Spacer(Modifier.height(8.dp))
 
                     if (event.isCompleted) {
-                        // PAST GP: show Sprint + Race results
-                        PastGpResults(gpResults)
+                        PastGpResults(
+                            gpResults = gpResults,
+                            expandedSession = expandedSession,
+                            onToggleSession = onToggleSession
+                        )
                     } else {
-                        // CURRENT/FUTURE GP: show session schedule with add-to-calendar
                         Text("SESIONES", color = MotoGPTextMuted, fontSize = 10.sp,
                             fontWeight = FontWeight.Bold, letterSpacing = 1.sp)
                         Spacer(Modifier.height(4.dp))
-
                         GpSessions.all.forEach { session ->
                             GpSessionRow(
                                 session = session,
@@ -231,57 +233,108 @@ fun GpCard(
 }
 
 @Composable
-fun PastGpResults(gpResults: Map<String, List<SessionResult>>) {
+fun PastGpResults(
+    gpResults: Map<String, List<SessionResult>>,
+    expandedSession: String?,
+    onToggleSession: (String) -> Unit
+) {
     Text("🏁 RESULTADOS", color = MotoGPSuccess, fontSize = 11.sp,
         fontWeight = FontWeight.Bold, letterSpacing = 1.sp)
     Spacer(Modifier.height(6.dp))
 
-    // Sprint results
+    // Sprint section
     val sprint = gpResults["Sprint"] ?: emptyList()
-    if (sprint.isNotEmpty()) {
-        Text("SPRINT", color = ColorSprint, fontSize = 10.sp, fontWeight = FontWeight.Bold, letterSpacing = 1.sp)
-        Spacer(Modifier.height(2.dp))
-        sprint.take(3).forEachIndexed { idx, r ->
-            val medal = listOf("🥇", "🥈", "🥉")[idx]
-            Row(
-                Modifier.fillMaxWidth().padding(vertical = 2.dp),
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                Text(medal, fontSize = 14.sp)
-                Spacer(Modifier.width(6.dp))
-                Text(r.rider, color = MotoGPTextPrimary, fontSize = 13.sp,
-                    fontWeight = if (idx == 0) FontWeight.Bold else FontWeight.Normal,
-                    modifier = Modifier.weight(1f))
-                Text(r.time, color = MotoGPTextSecondary, fontSize = 12.sp)
-            }
-        }
-        Spacer(Modifier.height(8.dp))
-    }
+    SessionResultBlock(
+        title = "SPRINT",
+        color = ColorSprint,
+        results = sprint,
+        isExpanded = expandedSession == "Sprint",
+        onToggle = { onToggleSession("Sprint") }
+    )
+    Spacer(Modifier.height(6.dp))
 
-    // Race results
+    // Race section
     val race = gpResults["Race"] ?: emptyList()
-    if (race.isNotEmpty()) {
-        Text("CARRERA", color = ColorRace, fontSize = 10.sp, fontWeight = FontWeight.Bold, letterSpacing = 1.sp)
-        Spacer(Modifier.height(2.dp))
-        race.take(3).forEachIndexed { idx, r ->
-            val medal = listOf("🥇", "🥈", "🥉")[idx]
-            Row(
-                Modifier.fillMaxWidth().padding(vertical = 2.dp),
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                Text(medal, fontSize = 14.sp)
-                Spacer(Modifier.width(6.dp))
-                Text(r.rider, color = MotoGPTextPrimary, fontSize = 13.sp,
-                    fontWeight = if (idx == 0) FontWeight.Bold else FontWeight.Normal,
-                    modifier = Modifier.weight(1f))
-                Text(r.time, color = MotoGPTextSecondary, fontSize = 12.sp)
-            }
-        }
-    }
+    SessionResultBlock(
+        title = "CARRERA",
+        color = ColorRace,
+        results = race,
+        isExpanded = expandedSession == "Race",
+        onToggle = { onToggleSession("Race") }
+    )
 
     if (sprint.isEmpty() && race.isEmpty()) {
         Text("Resultados no disponibles aún",
             color = MotoGPTextMuted, fontSize = 12.sp)
+    }
+}
+
+@Composable
+fun SessionResultBlock(
+    title: String,
+    color: Color,
+    results: List<SessionResult>,
+    isExpanded: Boolean,
+    onToggle: () -> Unit
+) {
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(8.dp))
+            .background(color.copy(alpha = 0.08f))
+            .clickable { onToggle() }
+            .padding(10.dp)
+    ) {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Text(title, color = color, fontSize = 12.sp,
+                fontWeight = FontWeight.Bold, letterSpacing = 1.sp)
+            Spacer(Modifier.weight(1f))
+            if (results.isNotEmpty()) {
+                Text(if (isExpanded) "▲" else "▼",
+                    color = color.copy(alpha = 0.6f), fontSize = 11.sp)
+            }
+        }
+
+        if (results.isEmpty()) {
+            Spacer(Modifier.height(4.dp))
+            Text("Sin datos", color = MotoGPTextMuted, fontSize = 11.sp)
+        }
+
+        AnimatedVisibility(visible = isExpanded && results.isNotEmpty()) {
+            Column(modifier = Modifier.padding(top = 6.dp)) {
+                Divider(color = color.copy(alpha = 0.2f))
+                Spacer(Modifier.height(4.dp))
+
+                results.forEachIndexed { idx, r ->
+                    Row(
+                        Modifier.fillMaxWidth()
+                            .padding(vertical = 3.dp, horizontal = 2.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        // Position
+                        val pos = when (idx) {
+                            0 -> "🥇"
+                            1 -> "🥈"
+                            2 -> "🥉"
+                            else -> "#${idx + 1}"
+                        }
+                        Text(pos, fontSize = if (idx < 3) 14.sp else 11.sp,
+                            modifier = Modifier.width(28.dp),
+                            color = if (idx < 3) Color.Unspecified else MotoGPTextMuted)
+
+                        // Rider name
+                        Text(r.rider, color = if (idx == 0) MotoGPTextPrimary else MotoGPTextSecondary,
+                            fontSize = if (idx == 0) 13.sp else 12.sp,
+                            fontWeight = if (idx == 0) FontWeight.Bold else FontWeight.Normal,
+                            modifier = Modifier.weight(1f),
+                            maxLines = 1, overflow = TextOverflow.Ellipsis)
+
+                        // Time / team
+                        Text(r.time, color = MotoGPTextMuted, fontSize = 12.sp)
+                    }
+                }
+            }
+        }
     }
 }
 

@@ -28,41 +28,63 @@ object Scraper {
         val now = java.util.Calendar.getInstance()
         val sdf = SimpleDateFormat("dd MMM yyyy", Locale.US)
         
-        // Find the next GP that hasn't happened yet
-        for ((i, gp) in calendars.withIndex()) {
-            if (!gp.isCompleted) {
-                try {
-                    val parts = gp.dateRange.split(" - ")
-                    if (parts.isEmpty() || parts[0].isBlank()) return i.coerceAtMost(calendars.lastIndex)
-                    val dateParts = parts[0].split(" ")
-                    if (dateParts.size < 2) return i.coerceAtMost(calendars.lastIndex)
-                    val day = dateParts[0].replace(Regex("(?:rd|th|st|nd)$"), "")
-                    val month = dateParts[1].take(3)
-                    
-                    val raceDate = sdf.parse("$day $month 2026") ?: return i.coerceAtMost(calendars.lastIndex)
-                    
-                    // GP weekend starts Friday (race day - 2)
-                    val fridayCal = java.util.Calendar.getInstance().apply {
-                        time = raceDate
-                        add(java.util.Calendar.DAY_OF_MONTH, -2)
-                        set(java.util.Calendar.HOUR_OF_DAY, 0)
-                        set(java.util.Calendar.MINUTE, 0)
-                        set(java.util.Calendar.SECOND, 0)
+        // Parse race (Sunday) dates for all GPs
+        val raceDates = mutableListOf<java.util.Calendar?>()
+        for (gp in calendars) {
+            try {
+                val parts = gp.dateRange.split(" - ")
+                val dateParts = parts[0].split(" ")
+                val startDay = dateParts.getOrNull(0)?.replace(Regex("(?:rd|th|st|nd)$"), "") ?: ""
+                val month = dateParts.getOrNull(1)?.take(3) ?: ""
+                
+                // Race day is the last day in the range (Sunday)
+                var raceDay = startDay
+                var raceMonth = month
+                if (parts.size > 1) {
+                    val lastPart = parts[1].trim()
+                    val lastParts = lastPart.split(" ")
+                    val lastDay = lastParts[0].replace(Regex("(?:rd|th|st|nd)$"), "")
+                    if (lastDay.all { it.isDigit() }) {
+                        raceDay = lastDay
+                        raceMonth = if (lastParts.size > 1) lastParts[1].take(3) else month
                     }
-                    
-                    // If past or on Friday → show this GP; otherwise show the one that just ended
-                    if (now.after(fridayCal) || now.get(java.util.Calendar.DAY_OF_YEAR) == fridayCal.get(java.util.Calendar.DAY_OF_YEAR)) {
-                        return i
-                    } else {
-                        return (i - 1).coerceAtLeast(0)
-                    }
-                } catch (_: Exception) {
-                    return i.coerceAtMost(calendars.lastIndex)
                 }
+                
+                val raceDate = sdf.parse("$raceDay $raceMonth 2026")
+                raceDates.add(if (raceDate != null) java.util.Calendar.getInstance().apply { time = raceDate } else null)
+            } catch (_: Exception) {
+                raceDates.add(null)
             }
         }
         
-        return calendars.lastIndex  // all completed → last GP
+        for ((i, cal) in raceDates.withIndex()) {
+            if (cal == null) continue
+            
+            // GP weekend: Friday 6AM → Monday 6AM
+            val friday = (cal.clone() as java.util.Calendar).apply {
+                add(java.util.Calendar.DAY_OF_MONTH, -2)
+                set(java.util.Calendar.HOUR_OF_DAY, 6)
+                set(java.util.Calendar.MINUTE, 0)
+                set(java.util.Calendar.SECOND, 0)
+            }
+            val monday = (cal.clone() as java.util.Calendar).apply {
+                add(java.util.Calendar.DAY_OF_MONTH, 1)
+                set(java.util.Calendar.HOUR_OF_DAY, 6)
+                set(java.util.Calendar.MINUTE, 0)
+                set(java.util.Calendar.SECOND, 0)
+            }
+            
+            if (now.after(friday) && now.before(monday)) {
+                return i  // Currently in this GP weekend
+            }
+            if (now.before(friday)) {
+                // Next GP hasn't started → show the one that just ended
+                return (i - 1).coerceAtLeast(0)
+            }
+            // GP has fully ended, continue to next
+        }
+        
+        return calendars.lastIndex
     }
 
     fun fetchSchedule(): List<CalendarEvent> {
