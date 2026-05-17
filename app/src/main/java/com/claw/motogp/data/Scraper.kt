@@ -24,26 +24,24 @@ object Scraper {
         else -> 1
     }
 
-    companion object {
-        private val GP_ORDER = listOf(
-            "Thailand GP" to "2026-03-01", "Brazil GP" to "2026-03-22",
-            "Americas GP" to "2026-03-29", "Spanish GP" to "2026-04-26",
-            "French GP" to "2026-05-10", "Catalan GP" to "2026-05-17",
-            "Italian GP" to "2026-05-31", "Hungarian GP" to "2026-06-07",
-            "Czech GP" to "2026-06-21", "Dutch GP" to "2026-06-28",
-            "German GP" to "2026-07-12", "British GP" to "2026-08-09",
-            "Aragon GP" to "2026-08-30", "San Marino GP" to "2026-09-13",
-            "Austrian GP" to "2026-09-20", "Japanese GP" to "2026-10-04",
-            "Indonesian GP" to "2026-10-11", "Australian GP" to "2026-10-25",
-            "Malaysian GP" to "2026-11-01", "Qatar GP" to "2026-11-08",
-            "Portuguese GP" to "2026-11-22", "Valencia GP" to "2026-11-29"
-        )
-    }
+    private val GP_ORDER = listOf(
+        "Thailand GP" to "2026-03-01", "Brazil GP" to "2026-03-22",
+        "Americas GP" to "2026-03-29", "Spanish GP" to "2026-04-26",
+        "French GP" to "2026-05-10", "Catalan GP" to "2026-05-17",
+        "Italian GP" to "2026-05-31", "Hungarian GP" to "2026-06-07",
+        "Czech GP" to "2026-06-21", "Dutch GP" to "2026-06-28",
+        "German GP" to "2026-07-12", "British GP" to "2026-08-09",
+        "Aragon GP" to "2026-08-30", "San Marino GP" to "2026-09-13",
+        "Austrian GP" to "2026-09-20", "Japanese GP" to "2026-10-04",
+        "Indonesian GP" to "2026-10-11", "Australian GP" to "2026-10-25",
+        "Malaysian GP" to "2026-11-01", "Qatar GP" to "2026-11-08",
+        "Portuguese GP" to "2026-11-22", "Valencia GP" to "2026-11-29"
+    )
 
     fun getCurrentWeekend(calendars: List<CalendarEvent>): Int {
         val now = java.util.Calendar.getInstance()
         val sdf = SimpleDateFormat("yyyy-MM-dd", Locale.US)
-        
+
         // Build race calendars from hardcoded dates
         val raceCals = mutableListOf<java.util.Calendar>()
         for ((gpName, dateStr) in GP_ORDER) {
@@ -52,30 +50,28 @@ object Scraper {
                 raceCals.add(java.util.Calendar.getInstance().apply { time = raceDate })
             } catch (_: Exception) { /* skip */ }
         }
-        
+
         for ((i, cal) in raceCals.withIndex()) {
-            // GP weekend: Friday 06:00 → Monday 06:00
             val friday = cal.clone() as java.util.Calendar
             friday.add(java.util.Calendar.DAY_OF_MONTH, -2)
             friday.set(java.util.Calendar.HOUR_OF_DAY, 6)
             friday.set(java.util.Calendar.MINUTE, 0)
             friday.set(java.util.Calendar.SECOND, 0)
-            
+
             val monday = cal.clone() as java.util.Calendar
             monday.add(java.util.Calendar.DAY_OF_MONTH, 1)
             monday.set(java.util.Calendar.HOUR_OF_DAY, 6)
             monday.set(java.util.Calendar.MINUTE, 0)
             monday.set(java.util.Calendar.SECOND, 0)
-            
+
             if (now.after(friday) && now.before(monday)) {
                 return i  // Currently in this GP weekend
             }
             if (now.before(friday)) {
-                // Next GP hasn't started → show the one that just ended
-                return (i - 1).coerceAtLeast(0)
+                return (i - 1).coerceAtLeast(0)  // Show previous GP until next Friday
             }
         }
-        
+
         return calendars.lastIndex.coerceAtMost(raceCals.lastIndex)
     }
 
