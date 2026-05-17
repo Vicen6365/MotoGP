@@ -329,7 +329,7 @@ object Scraper {
 
             // Deduplicate by href (crash.net duplicates each <a> with empty + text variants)
             val seenHrefs = mutableSetOf<String>()
-            val articleLinks = doc.select("a[href*=/motogp/results/]")
+            val articleLinks = doc.select("a[href*=\"/motogp/results/\"]")
                 .filter { link ->
                     val text = link.text().lowercase()
                     val href = link.attr("href").lowercase()
@@ -372,7 +372,7 @@ object Scraper {
                 titleText.contains("free practice 1") || titleText.contains("fp1") || titleText.contains("free practice (1)") -> "FP1"
                 titleText.contains("sprint race") -> "Sprint"
                 titleText.contains("race results") || titleText.contains("grand prix") -> "Race"
-                titleText.contains("warm up") -> "WU"
+                titleText.contains("warm up") || titleText.contains("warm-up") -> "WU"
                 else -> null
             }
             if (sessionKey == null) continue
