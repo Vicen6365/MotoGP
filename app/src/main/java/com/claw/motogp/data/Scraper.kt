@@ -717,7 +717,7 @@ object Scraper {
 
     // ─── NOTICIAS (ESPAÑOL) ──────────────────────────────────────
 
-    private const val NEWS_URL = "https://www.motorsport.com/es/motogp/news/"
+    private const val NEWS_URL = "https://www.crash.net/motogp/news"
 
     fun fetchNews(): List<NewsArticle> {
         return try {
@@ -728,46 +728,55 @@ object Scraper {
         }
     }
 
+    fun fetchArticleContent(url: String): String {
+        return try {
+            val doc = Jsoup.connect(url).timeout(TIMEOUT).get()
+            val article = doc.select("article").firstOrNull() ?: return ""
+            val paragraphs = article.select("p")
+            paragraphs.joinToString("\n\n") { it.text().trim() }
+                .ifEmpty { "" }
+        } catch (_: Exception) { "" }
+    }
+
     fun parseNews(doc: Document): List<NewsArticle> {
         val articles = mutableListOf<NewsArticle>()
+        val cards = doc.select("div.card.card_featured")
 
-        val newsItems = doc.select("article, .ms-item, .news-item, [class*=article], [data-testid*=article]")
-        if (newsItems.isNotEmpty()) {
-            for (block in newsItems.take(30)) {
-                val titleEl = block.select("h1, h2, h3, h4, [class*=title], a[class*=title]").firstOrNull()
-                val title = titleEl?.text()?.trim() ?: continue
-                val snippet = block.select("p, [class*=desc], [class*=excerpt], [class*=teaser]")
-                    .firstOrNull()?.text()?.trim() ?: ""
-                val link = (block.select("a[href]").firstOrNull()) ?: titleEl
-                val url = if (link != null) {
-                    val href = link.attr("abs:href")
-                    if (href.startsWith("http")) href else ""
+        for (card in cards) {
+            try {
+                val titleEl = card.select("a.title").firstOrNull() ?: continue
+                val title = titleEl.text().trim()
+                val href = titleEl.attr("href")
+                val url = if (href.startsWith("http")) href else "https://www.crash.net$href"
+
+                val descEl = card.select("div.description").firstOrNull()
+                val snippet = descEl?.text()?.trim() ?: ""
+
+                val timeEl = card.select("div.time").firstOrNull()
+                val date = if (timeEl != null) {
+                    val timestamp = timeEl.attr("data-timestamp").toLongOrNull()
+                    if (timestamp != null) formatTimestamp(timestamp) else ""
                 } else ""
-                val date = block.select("time, [datetime], [class*=date]")
-                    .firstOrNull()?.attr("datetime")?.take(10)
-                    ?: block.select("time, [class*=date]").firstOrNull()?.text()?.trim()
-                    ?: ""
 
-                if (title.length > 10 && url.isNotEmpty()) {
-                    articles.add(NewsArticle(title, snippet.take(200), "motorsport/es", url, date))
+                val textWrapper = card.select("div.text_wrapper").firstOrNull()
+                val imgEl = card.select("a > picture > img").firstOrNull()
+                val imageUrl = imgEl?.attr("src")?.substringBefore("?") ?: ""
+
+                if (title.length > 15 && url.isNotEmpty()) {
+                    articles.add(NewsArticle(title, snippet, "crash.net", url, date))
                 }
-            }
+            } catch (_: Exception) { continue }
         }
 
-        if (articles.isEmpty()) {
-            val links = doc.select("a[href]")
-            for (link in links.take(40)) {
-                val title = link.text().trim()
-                val href = link.attr("abs:href")
-                if (title.length in 25..150 && href.contains("motogp") && !href.contains("standings") && !href.contains("schedule") && !href.contains("results")) {
-                    val parent = link.parent()
-                    val snippet = parent?.select("p")?.firstOrNull()?.text()?.trim() ?: ""
-                    articles.add(NewsArticle(title, snippet.take(200), "motorsport/es", href, ""))
-                }
-            }
-        }
+        return if (articles.isEmpty()) getHardcodedNews()
+        else articles.distinctBy { it.url }.take(10)
+    }
 
-        return if (articles.isEmpty()) getHardcodedNews() else articles.distinctBy { it.url }.take(25)
+    private fun formatTimestamp(epochSec: Long): String {
+        // crash.net timestamps are in seconds
+        val sdf = java.text.SimpleDateFormat("dd MMM HH:mm", java.util.Locale.forLanguageTag("es"))
+        sdf.timeZone = java.util.TimeZone.getTimeZone("Europe/Madrid")
+        return sdf.format(java.util.Date(epochSec * 1000))
     }
 
     private fun getHardcodedNews(): List<NewsArticle> = listOf(

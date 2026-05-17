@@ -99,7 +99,8 @@ data class NewsArticle(
     val snippet: String,
     val source: String,
     val url: String,
-    val date: String
+    val date: String,
+    val content: String = ""
 )
 
 data class CalendarSession(
