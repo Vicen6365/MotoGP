@@ -312,32 +312,44 @@ object Scraper {
 
     fun fetchSessionResults(gpName: String): Map<String, List<SessionResult>> {
         return try {
-            val doc = Jsoup.connect(CRASH_RESULTS_URL).timeout(TIMEOUT).get()
-            val gpKeyword = when {
+            val gpKeywordRaw = when {
                 gpName.contains("Catalan", true) -> "catal"
                 gpName.contains("French", true) -> "french"
-                gpName.contains("Spanish", true) -> "spain|jerez"
-                gpName.contains("Italian", true) -> "italy|mugello"
-                gpName.contains("Americas", true) -> "americas|texas"
-                gpName.contains("Brazil", true) -> "brazil"
-                gpName.contains("Thailand", true) -> "thailand"
-                gpName.contains("Dutch", true) -> "dutch|assen"
-                gpName.contains("German", true) -> "germany|sachsenring"
-                gpName.contains("British", true) -> "britain|silverstone"
+                gpName.contains("Spanish", true) -> "spain,jerez"
+                gpName.contains("Italian", true) -> "italy,mugello"
+                gpName.contains("Americas", true) -> "cota,us-motogp,americas,texas"
+                gpName.contains("Brazil", true) -> "brazil,brazilian,goiania"
+                gpName.contains("Thailand", true) -> "thailand,buriram"
+                gpName.contains("Dutch", true) -> "dutch,assen"
+                gpName.contains("German", true) -> "germany,sachsenring"
+                gpName.contains("British", true) -> "britain,british,silverstone"
                 else -> gpName.lowercase().take(6)
             }
+            val gpKeywords = gpKeywordRaw.split(",")
 
-            // Deduplicate by href (crash.net duplicates each <a> with empty + text variants)
+            // Iterate through paginated results until we find enough links
             val seenHrefs = mutableSetOf<String>()
-            val articleLinks = doc.select("a[href*=\"/motogp/results/\"]")
-                .filter { link ->
+            val articleLinks = mutableListOf<org.jsoup.nodes.Element>()
+            var page = 0
+            while (articleLinks.size < 4 && page < 5) {
+                val url = if (page == 0) CRASH_RESULTS_URL else "$CRASH_RESULTS_URL?page=$page"
+                val doc = Jsoup.connect(url).timeout(TIMEOUT).get()
+                val pageLinks = doc.select("a[href*=\"/motogp/results/\"]")
+                var newOnPage = 0
+                for (link in pageLinks) {
+                    if (articleLinks.size >= 4) break
                     val text = link.text().lowercase()
                     val href = link.attr("href").lowercase()
-                    val isMatch = text.contains(gpKeyword.lowercase()) || href.contains(gpKeyword.lowercase())
-                    val isNew = seenHrefs.add(href) // add() returns true if not already present
-                    isMatch && isNew
+                    val isMatch = gpKeywords.any { kw -> text.contains(kw) || href.contains(kw) }
+                    val isNew = seenHrefs.add(href)
+                    if (isMatch && isNew) {
+                        articleLinks.add(link)
+                        newOnPage++
+                    }
                 }
-                .take(4)
+                if (newOnPage == 0 && page > 0) break // Empty page, stop searching
+                page++
+            }
 
             if (articleLinks.isEmpty()) return emptyMap()
 
