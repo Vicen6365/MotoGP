@@ -717,15 +717,46 @@ object Scraper {
 
     // ─── NOTICIAS (ESPAÑOL) ──────────────────────────────────────
 
-    private const val NEWS_URL = "https://soymotero.net/motogp/"
+    private const val SOYMOTERO_URL = "https://soymotero.net/motogp/"
+    private const val MOTOGP_COM_URL = "https://www.motogp.com/es/news"
+
+    private val MOTO_KEYWORDS = listOf(
+        "motogp", "moto gp", "márquez", "martín", "bagnaia", "acosta", "bastianini",
+        "quartararo", "bezzecchi", "viñales", "vinales", "ktm", "ducati", "yamaha",
+        "aprilia", "honda", "pramac", "tech3", "gp de", "carrera", "sprint",
+        "mundial", "campeonato", "fichajes", "le mans", "jerez", "cataluña",
+        "catalunya", "francia", "buriram", "cota", "assen", "mugello", "silverstone",
+        "sachensing", "mandalika", "sepang", "losail", "algarve", "portimao",
+        "valencia", "motorland", "misano", "brno", "motegi", "phillip island",
+        "red bull ring", "spielberg"
+    )
 
     fun fetchNews(): List<NewsArticle> {
-        return try {
-            val doc = Jsoup.connect(NEWS_URL).timeout(TIMEOUT).get()
-            parseNews(doc)
-        } catch (e: Exception) {
-            getHardcodedNews()
-        }
+        val allArticles = mutableListOf<NewsArticle>()
+        val seenUrls = mutableSetOf<String>()
+
+        // 1. Fetch from soymotero.net (primary source)
+        try {
+            val doc = Jsoup.connect(SOYMOTERO_URL).timeout(TIMEOUT).get()
+            val soyArticles = parseSoymotero(doc)
+            for (a in soyArticles) {
+                val baseUrl = a.url.substringBefore("?").substringBefore("#")
+                if (seenUrls.add(baseUrl)) allArticles.add(a)
+            }
+        } catch (_: Exception) {}
+
+        // 2. Fetch from motogp.com/es (secondary source - official Spanish)
+        try {
+            val doc = Jsoup.connect(MOTOGP_COM_URL).timeout(TIMEOUT).get()
+            val motoArticles = parseMotogpCom(doc)
+            for (a in motoArticles) {
+                val baseUrl = a.url.substringBefore("?").substringBefore("#")
+                if (seenUrls.add(baseUrl)) allArticles.add(a)
+            }
+        } catch (_: Exception) {}
+
+        return if (allArticles.isEmpty()) getHardcodedNews()
+        else allArticles.distinctBy { it.url }.take(10)
     }
 
     fun fetchArticleContent(url: String): String {
@@ -741,7 +772,12 @@ object Scraper {
         } catch (_: Exception) { "" }
     }
 
-    fun parseNews(doc: Document): List<NewsArticle> {
+    private fun isMotogpRelated(text: String): Boolean {
+        val lower = text.lowercase()
+        return MOTO_KEYWORDS.any { lower.contains(it) }
+    }
+
+    fun parseSoymotero(doc: Document): List<NewsArticle> {
         val articles = mutableListOf<NewsArticle>()
         val entries = doc.select(".entry, [class*=entry]")
 
@@ -751,6 +787,9 @@ object Scraper {
                 val title = linkEl?.text()?.trim() ?: continue
                 val href = linkEl.attr("abs:href")
                 if (href.isEmpty()) continue
+
+                // Only keep MotoGP-related articles
+                if (!isMotogpRelated(title)) continue
 
                 val snippet = entry.select("p").firstOrNull()?.text()?.trim() ?: ""
 
@@ -765,8 +804,50 @@ object Scraper {
             } catch (_: Exception) { continue }
         }
 
-        return if (articles.isEmpty()) getHardcodedNews()
-        else articles.distinctBy { it.url }.take(10)
+        return articles
+    }
+
+    fun parseMotogpCom(doc: Document): List<NewsArticle> {
+        val articles = mutableListOf<NewsArticle>()
+        val links = doc.select("a[href*=\"/es/news/\"]")
+
+        for (link in links) {
+            try {
+                var href = link.attr("abs:href")
+                if (href.isEmpty()) continue
+
+                var text = link.text().trim()
+                if (text.length < 20 && link.select("img").isEmpty()) continue
+
+                // Skip non-news URLs (categories)
+                val hrefLower = href.lowercase()
+                if (hrefLower.contains("/motogp") && !hrefLower.contains("/es/news/202")) continue
+                if (!hrefLower.contains("/es/news/2026") && !hrefLower.contains("/es/news/2027")) continue
+
+                // Get the clean title (remove "MotoGP™ News" prefixes)
+                if (text.contains("MotoGP") && text.contains("\n")) {
+                    text = text.split("\n").filter { it.trim().isNotEmpty() }
+                        .firstOrNull { !it.contains("MotoGP") }
+                        ?.trim() ?: text
+                }
+
+                if (text.length < 15) continue
+                if (text.contains("Autor", ignoreCase = true) || text.contains("Leer", ignoreCase = true)) continue
+
+                // Extract date from URL path
+                val date = if (hrefLower.contains("/2026/")) {
+                    val parts = href.split("/")
+                    val idx = parts.indexOfFirst { it == "2026" }
+                    if (idx >= 0 && idx + 2 < parts.size) "${parts[idx]}-${parts[idx+1]}-${parts[idx+2]}"
+                    else ""
+                } else ""
+
+                articles.add(NewsArticle(text, "", "motogp.com", href, date))
+            } catch (_: Exception) { continue }
+        }
+
+        // Deduplicate by URL base (same article may have multiple <a> tags)
+        return articles.distinctBy { it.url.substringBefore("?") }.take(10)
     }
 
     private fun getHardcodedNews(): List<NewsArticle> = listOf(

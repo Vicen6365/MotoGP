@@ -69,7 +69,7 @@ fun NewsScreen() {
             Column {
                 Text("📰 NOTICIAS", color = Color.White.copy(alpha = 0.7f),
                     fontSize = 12.sp, fontWeight = FontWeight.Bold, letterSpacing = 2.sp)
-                Text("MotoGP · soymotero.net", color = Color.White,
+                Text("MotoGP · soymotero.net + motogp.com", color = Color.White,
                     fontSize = 22.sp, fontWeight = FontWeight.Bold)
             }
         }
@@ -167,12 +167,16 @@ fun NewsCard(
                         modifier = Modifier
                             .size(36.dp)
                             .clip(RoundedCornerShape(6.dp))
-                            .background(Color(0xFF2E7D32).copy(alpha = 0.2f)),
+                            .background(
+                                if (article.source == "soymotero") Color(0xFF2E7D32).copy(alpha = 0.2f)
+                                else Color(0xFF1565C0).copy(alpha = 0.2f)
+                            ),
                         contentAlignment = Alignment.Center
                     ) {
                         Text(
-                            text = "SM",
-                            color = Color(0xFF2E7D32),
+                            text = if (article.source == "soymotero") "SM" else "MG",
+                            color = if (article.source == "soymotero") Color(0xFF2E7D32)
+                                    else Color(0xFF1565C0),
                             fontSize = 10.sp,
                             fontWeight = FontWeight.Bold
                         )
@@ -206,8 +210,9 @@ fun NewsCard(
 
                     Row {
                         Text(
-                            text = "SOYMOTERO",
-                            color = Color(0xFF2E7D32),
+                            text = if (article.source == "soymotero") "SOYMOTERO" else "MOTOGP.COM",
+                            color = if (article.source == "soymotero") Color(0xFF2E7D32)
+                                    else Color(0xFF1565C0),
                             fontSize = 10.sp,
                             fontWeight = FontWeight.Bold
                         )
