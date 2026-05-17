@@ -35,11 +35,7 @@ data class RiderStanding(
     val team: String,
     val bike: String,
     val points: Int,
-    val deficit: String = "",
-    val wins: Int = 0,
-    val podiums: Int = 0,
-    val lastPositions: List<Int> = emptyList(),
-    val countryIso: String = ""
+    val deficit: String = ""
 )
 
 data class TeamStanding(

@@ -316,17 +316,17 @@ object Scraper {
             ?: throw Exception("No MotoGP category")
         val catUuid = motogpCat.getString("id")
 
-        val standingsJson = Jsoup.connect("https://api.pulselive.motogp.com/motogp/v2/results/world-standings")
+        // 1. Fetch rider standings
+        val riderJson = Jsoup.connect("https://api.pulselive.motogp.com/motogp/v2/results/world-standings")
             .data("type", "rider")
             .data("season", seasonUuid)
             .data("category", catUuid)
             .ignoreContentType(true).timeout(TIMEOUT).execute().body()
 
-        val root = org.json.JSONObject(standingsJson)
+        val root = org.json.JSONObject(riderJson)
         val riderArr = root.getJSONObject("classification").getJSONArray("rider")
 
         val riders = mutableListOf<RiderStanding>()
-        val manuPoints = mutableMapOf<String, Int>()
 
         for (i in 0 until riderArr.length()) {
             val r = riderArr.getJSONObject(i)
@@ -339,19 +339,6 @@ object Scraper {
             val teamName = r.optString("team_name", "")
             val points = r.getInt("points")
             val deficit = r.optInt("pointsFromFirst", 0)
-            val wins = r.optInt("race_wins", 0)
-            val podiums = r.optInt("podiums", 0)
-            val country = riderData.optJSONObject("country")?.optString("iso", "") ?: ""
-
-            val lastPos = mutableListOf<Int>()
-            val lastPosObj = r.optJSONObject("last_positions")
-            if (lastPosObj != null) {
-                for (key in lastPosObj.keys()) {
-                    val v = lastPosObj.optInt(key, -1)
-                    if (v > 0) lastPos.add(v)
-                }
-            }
-
             val deficitStr = if (deficit == 0) "-" else "-$deficit"
 
             riders.add(RiderStanding(
@@ -360,15 +347,27 @@ object Scraper {
                 team = teamName,
                 bike = bike,
                 points = points,
-                deficit = deficitStr,
-                wins = wins,
-                podiums = podiums,
-                lastPositions = lastPos.takeLast(3),
-                countryIso = country
+                deficit = deficitStr
             ))
-            if (bike.isNotEmpty()) {
-                manuPoints[bike] = manuPoints.getOrDefault(bike, 0) + points
-            }
+        }
+
+        // 2. Fetch constructor standings from API (MotoGP rules: best rider per constructor per race)
+        val manuJson = Jsoup.connect("https://api.pulselive.motogp.com/motogp/v2/results/world-standings")
+            .data("type", "constructor")
+            .data("season", seasonUuid)
+            .data("category", catUuid)
+            .ignoreContentType(true).timeout(TIMEOUT).execute().body()
+
+        val manuRoot = org.json.JSONObject(manuJson)
+        val manuArr = manuRoot.getJSONObject("classification").getJSONArray("constructor")
+
+        // API returns per-event entries; sum across all events for total
+        val manuPoints = mutableMapOf<String, Int>()
+        for (i in 0 until manuArr.length()) {
+            val c = manuArr.getJSONObject(i)
+            val name = c.getJSONObject("constructor").getString("name")
+            val pts = c.optInt("points", 0)
+            manuPoints.merge(name, pts, Int::plus)
         }
 
         val sortedManu = manuPoints.entries.sortedByDescending { it.value }
@@ -773,35 +772,38 @@ object Scraper {
     }
 
     private fun getHardcodedRiders(): List<RiderStanding> = listOf(
-        RiderStanding(1, "M. Bezzecchi", "Aprilia Racing", "Aprilia", 128),
-        RiderStanding(2, "J. Martin", "Aprilia Racing", "Aprilia", 127),
-        RiderStanding(3, "F. Di Giannantonio", "VR46 Racing", "Ducati", 84),
-        RiderStanding(4, "P. Acosta", "Red Bull KTM", "KTM", 83),
-        RiderStanding(5, "A. Ogura", "Trackhouse Racing", "Aprilia", 67),
-        RiderStanding(6, "R. Fernández", "Trackhouse Racing", "Aprilia", 62),
-        RiderStanding(7, "M. Marquez", "Ducati Team", "Ducati", 57),
-        RiderStanding(8, "A. Marquez", "Gresini Racing", "Ducati", 55),
-        RiderStanding(9, "F. Bagnaia", "Ducati Team", "Ducati", 43),
-        RiderStanding(10, "E. Bastianini", "Tech 3", "KTM", 39),
-        RiderStanding(11, "L. Marini", "Honda HRC", "Honda", 33),
-        RiderStanding(12, "J. Zarco", "Team LCR", "Honda", 29),
-        RiderStanding(13, "B. Binder", "Red Bull KTM", "KTM", 28),
-        RiderStanding(14, "F. Aldeguer", "Gresini Racing", "Ducati", 27),
-        RiderStanding(15, "F. Morbidelli", "VR46 Racing", "Ducati", 27),
-        RiderStanding(16, "F. Quartararo", "Yamaha Racing", "Yamaha", 26),
-        RiderStanding(17, "D. Moreira", "Team LCR", "Honda", 10),
-        RiderStanding(18, "J. Mir", "Honda HRC", "Honda", 8),
-        RiderStanding(19, "A. Rins", "Yamaha Racing", "Yamaha", 7),
-        RiderStanding(20, "T. Razgatlioglu", "Pramac Racing", "Yamaha", 4),
-        RiderStanding(21, "J. Miller", "Pramac Racing", "Yamaha", 1),
-        RiderStanding(22, "M. Viñales", "Tech 3", "KTM", 0)
+        RiderStanding(1, "M. Bezzecchi", "Aprilia Racing", "Aprilia", 140),
+        RiderStanding(2, "J. Martin", "Aprilia Racing", "Aprilia", 127, "-13"),
+        RiderStanding(3, "F. Di Giannantonio", "VR46 Racing", "Ducati", 116, "-24"),
+        RiderStanding(4, "P. Acosta", "Red Bull KTM", "KTM", 92, "-48"),
+        RiderStanding(5, "A. Ogura", "Trackhouse Racing", "Aprilia", 76, "-64"),
+        RiderStanding(6, "R. Fernández", "Trackhouse Racing", "Aprilia", 68, "-72"),
+        RiderStanding(7, "A. Marquez", "Gresini Racing", "Ducati", 67, "-73"),
+        RiderStanding(8, "M. Marquez", "Ducati Team", "Ducati", 57, "-83"),
+        RiderStanding(9, "F. Bagnaia", "Ducati Team", "Ducati", 60, "-80"),
+        RiderStanding(10, "F. Aldeguer", "Gresini Racing", "Ducati", 43, "-97"),
+        RiderStanding(11, "L. Marini", "Honda HRC", "Honda", 42, "-98"),
+        RiderStanding(12, "E. Bastianini", "Tech 3", "KTM", 39, "-101"),
+        RiderStanding(13, "F. Quartararo", "Yamaha Racing", "Yamaha", 36, "-104"),
+        RiderStanding(14, "B. Binder", "Red Bull KTM", "KTM", 36, "-104"),
+        RiderStanding(15, "J. Zarco", "Team LCR", "Honda", 34, "-106"),
+        RiderStanding(16, "F. Morbidelli", "VR46 Racing", "Ducati", 34, "-106"),
+        RiderStanding(17, "J. Mir", "Honda HRC", "Honda", 28, "-112"),
+        RiderStanding(18, "D. Moreira", "Team LCR", "Honda", 16, "-124"),
+        RiderStanding(19, "A. Rins", "Yamaha Racing", "Yamaha", 12, "-128"),
+        RiderStanding(20, "T. Razgatlioglu", "Pramac Racing", "Yamaha", 5, "-135"),
+        RiderStanding(21, "M. Viñales", "Tech 3", "KTM", 3, "-137"),
+        RiderStanding(22, "J. Miller", "Pramac Racing", "Yamaha", 3, "-137"),
+        RiderStanding(23, "J. Folger", "Tech 3", "KTM", 0, "-140"),
+        RiderStanding(24, "A. Fernandez", "Yamaha Racing", "Yamaha", 0, "-140"),
+        RiderStanding(25, "M. Pirro", "Gresini Racing", "Ducati", 0, "-140")
     )
 
     private fun getHardcodedManufacturers(): List<ManufacturerStanding> = listOf(
-        ManufacturerStanding(1, "Aprilia", 255),
-        ManufacturerStanding(2, "Ducati", 211),
-        ManufacturerStanding(3, "KTM", 150),
-        ManufacturerStanding(4, "Honda", 69),
+        ManufacturerStanding(1, "Aprilia", 179),
+        ManufacturerStanding(2, "Ducati", 165),
+        ManufacturerStanding(3, "KTM", 113),
+        ManufacturerStanding(4, "Honda", 74),
         ManufacturerStanding(5, "Yamaha", 38)
     )
 
