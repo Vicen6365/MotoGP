@@ -69,7 +69,7 @@ fun NewsScreen() {
             Column {
                 Text("📰 NOTICIAS", color = Color.White.copy(alpha = 0.7f),
                     fontSize = 12.sp, fontWeight = FontWeight.Bold, letterSpacing = 2.sp)
-                Text("MotoGP · crash.net", color = Color.White,
+                Text("MotoGP · soymotero.net", color = Color.White,
                     fontSize = 22.sp, fontWeight = FontWeight.Bold)
             }
         }
@@ -167,12 +167,12 @@ fun NewsCard(
                         modifier = Modifier
                             .size(36.dp)
                             .clip(RoundedCornerShape(6.dp))
-                            .background(Color(0xFFFF5722).copy(alpha = 0.2f)),
+                            .background(Color(0xFF2E7D32).copy(alpha = 0.2f)),
                         contentAlignment = Alignment.Center
                     ) {
                         Text(
-                            text = "CR",
-                            color = Color(0xFFFF5722),
+                            text = "SM",
+                            color = Color(0xFF2E7D32),
                             fontSize = 10.sp,
                             fontWeight = FontWeight.Bold
                         )
@@ -206,8 +206,8 @@ fun NewsCard(
 
                     Row {
                         Text(
-                            text = "CRASH.NET",
-                            color = Color(0xFFFF5722),
+                            text = "SOYMOTERO",
+                            color = Color(0xFF2E7D32),
                             fontSize = 10.sp,
                             fontWeight = FontWeight.Bold
                         )

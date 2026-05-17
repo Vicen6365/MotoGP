@@ -717,7 +717,7 @@ object Scraper {
 
     // ─── NOTICIAS (ESPAÑOL) ──────────────────────────────────────
 
-    private const val NEWS_URL = "https://www.crash.net/motogp/news"
+    private const val NEWS_URL = "https://soymotero.net/motogp/"
 
     fun fetchNews(): List<NewsArticle> {
         return try {
@@ -731,8 +731,11 @@ object Scraper {
     fun fetchArticleContent(url: String): String {
         return try {
             val doc = Jsoup.connect(url).timeout(TIMEOUT).get()
-            val article = doc.select("article").firstOrNull() ?: return ""
+            val article = doc.select("article").firstOrNull()
+                ?: doc.select(".td-post-content, .post, [class*=entry]").firstOrNull()
+                ?: return ""
             val paragraphs = article.select("p")
+                .filter { it.text().trim().length > 30 }
             paragraphs.joinToString("\n\n") { it.text().trim() }
                 .ifEmpty { "" }
         } catch (_: Exception) { "" }
@@ -740,30 +743,24 @@ object Scraper {
 
     fun parseNews(doc: Document): List<NewsArticle> {
         val articles = mutableListOf<NewsArticle>()
-        val cards = doc.select("div.card.card_featured")
+        val entries = doc.select(".entry, [class*=entry]")
 
-        for (card in cards) {
+        for (entry in entries) {
             try {
-                val titleEl = card.select("a.title").firstOrNull() ?: continue
-                val title = titleEl.text().trim()
-                val href = titleEl.attr("href")
-                val url = if (href.startsWith("http")) href else "https://www.crash.net$href"
+                val linkEl = entry.select("h3.entry-title a, h2.entry-title a, h4 a, a[href*=/competicion/]").firstOrNull()
+                val title = linkEl?.text()?.trim() ?: continue
+                val href = linkEl.attr("abs:href")
+                if (href.isEmpty()) continue
 
-                val descEl = card.select("div.description").firstOrNull()
-                val snippet = descEl?.text()?.trim() ?: ""
+                val snippet = entry.select("p").firstOrNull()?.text()?.trim() ?: ""
 
-                val timeEl = card.select("div.time").firstOrNull()
-                val date = if (timeEl != null) {
-                    val timestamp = timeEl.attr("data-timestamp").toLongOrNull()
-                    if (timestamp != null) formatTimestamp(timestamp) else ""
-                } else ""
+                val timeEl = entry.select("time, .date, [datetime], .entry-date").firstOrNull()
+                val date = timeEl?.attr("datetime")?.take(10)
+                    ?: timeEl?.text()?.trim()?.take(10)
+                    ?: ""
 
-                val textWrapper = card.select("div.text_wrapper").firstOrNull()
-                val imgEl = card.select("a > picture > img").firstOrNull()
-                val imageUrl = imgEl?.attr("src")?.substringBefore("?") ?: ""
-
-                if (title.length > 15 && url.isNotEmpty()) {
-                    articles.add(NewsArticle(title, snippet, "crash.net", url, date))
+                if (title.length > 15 && href.isNotEmpty()) {
+                    articles.add(NewsArticle(title, snippet.take(300), "soymotero", href, date))
                 }
             } catch (_: Exception) { continue }
         }
@@ -772,63 +769,56 @@ object Scraper {
         else articles.distinctBy { it.url }.take(10)
     }
 
-    private fun formatTimestamp(epochSec: Long): String {
-        // crash.net timestamps are in seconds
-        val sdf = java.text.SimpleDateFormat("dd MMM HH:mm", java.util.Locale.forLanguageTag("es"))
-        sdf.timeZone = java.util.TimeZone.getTimeZone("Europe/Madrid")
-        return sdf.format(java.util.Date(epochSec * 1000))
-    }
-
     private fun getHardcodedNews(): List<NewsArticle> = listOf(
         NewsArticle(
             "Mercado de fichajes MotoGP 2027: rumores y movimientos",
             "Con varias renovaciones en el aire, el mercado de pilotos para 2027 se calienta. Varias fábricas ya negocian cambios en sus alineaciones.",
-            "crash.net", "https://www.crash.net/motogp/news/", "May 2026"
+            "soymotero", "https://soymotero.net/competicion/", "2026-05-17"
         ),
         NewsArticle(
             "Ducati prepara una evolución del motor para la segunda mitad de temporada",
             "La fábrica de Borgo Panigale trabaja en una nueva especificación de motor que podría llegar en el GP de Italia. Bagnaia confía en dar el salto.",
-            "autosport", "https://www.autosport.com/motogp/news/", "May 2026"
+            "soymotero", "https://soymotero.net/competicion/", "2026-05-16"
         ),
         NewsArticle(
             "Aprilia lidera el campeonato: 'Esto es solo el principio'",
             "Massimo Rivola celebra el gran momento de Aprilia con Bezzecchi y Martin liderando la general. 'Queda mucho trabajo pero el potencial es enorme'.",
-            "crash.net", "https://www.crash.net/motogp/news/", "May 2026"
+            "soymotero", "https://soymotero.net/competicion/", "2026-05-16"
         ),
         NewsArticle(
             "Marc Márquez: 'Estamos más cerca de la cabeza de lo que parece'",
             "El ocho veces campeón asegura que Ducati Team está progresando y que en las próximas carreras pueden pelear por victorias. Recuperación sólida.",
-            "motorsport", "https://www.motorsport.com/motogp/news/", "May 2026"
+            "soymotero", "https://soymotero.net/competicion/", "2026-05-15"
         ),
         NewsArticle(
             "Pedro Acosta, la joya de KTM: 'Quiero luchar por el título'",
             "El rookie sensación de la temporada confirma sus ambiciones tras conseguir su primera pole. KTM confía plenamente en su proyecto.",
-            "crash.net", "https://www.crash.net/motogp/", "May 2026"
+            "soymotero", "https://soymotero.net/competicion/", "2026-05-15"
         ),
         NewsArticle(
             "Yamaha anuncia cambios técnicos tras los malos resultados",
             "La fábrica de Iwata reestructura su departamento técnico para 2027. Quartararo espera que los cambios den frutos la próxima temporada.",
-            "motorsport", "https://www.motorsport.com/motogp/news/", "May 2026"
+            "soymotero", "https://soymotero.net/competicion/", "2026-05-14"
         ),
         NewsArticle(
             "Honda ficha a un ingeniero de Ducati para mejorar el desarrollo",
             "El equipo HRC refuerza su área técnica con la incorporación de un ingeniero clave procedente de Ducati Corse para el proyecto 2027.",
-            "autosport", "https://www.autosport.com/motogp/news/", "May 2026"
+            "soymotero", "https://soymotero.net/competicion/", "2026-05-14"
         ),
         NewsArticle(
             "La FIM confirma nuevas reglas técnicas para 2027",
             "Las nuevas regulaciones incluyen reducción de aerodinámica y cambios en la unidad de control. Los equipos se preparan para el mayor cambio normativo desde 2023.",
-            "crash.net", "https://www.crash.net/motogp/news/", "May 2026"
+            "soymotero", "https://soymotero.net/competicion/", "2026-05-13"
         ),
         NewsArticle(
             "Bezzecchi: 'Ganar el título con Aprilia sería increíble'",
             "El líder del campeonato analiza su temporada y admite que soñar con el título es inevitable. Martin es su principal rival... y compañero de equipo.",
-            "motorsport", "https://www.motorsport.com/motogp/news/", "May 2026"
+            "soymotero", "https://soymotero.net/competicion/", "2026-05-13"
         ),
         NewsArticle(
             "El GP de Cataluña bate récords de asistencia",
             "Más de 150.000 espectadores acudieron al Circuit de Barcelona-Catalunya durante el fin de semana. El interés por MotoGP sigue creciendo.",
-            "autosport", "https://www.autosport.com/motogp/news/", "May 2026"
+            "soymotero", "https://soymotero.net/competicion/", "2026-05-12"
         )
     )
 }
