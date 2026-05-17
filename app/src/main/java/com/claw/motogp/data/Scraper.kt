@@ -128,21 +128,30 @@ object Scraper {
             "Circuit Ricardo Tormo"
         )
 
-        val datePattern = Regex("(\\d{1,2}\\s+(Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec))")
-        val raceDayPattern = Regex("(\\d{1,2}\\s+(?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec))\\s+\\d{1,2}:\\d{2}")
-
-        val raceDays = raceDayPattern.findAll(text).map { it.groupValues[1] }.toList()
-
         for ((i, name) in gpNames.withIndex()) {
             val circuit = gpCircuits.getOrElse(i) { "" }
-            val dateRange = if (i < raceDays.size) raceDays[i] else ""
+            // Use hardcoded dates instead of scraping (website format changed)
+            val dateStr = GP_ORDER.find { it.first == name }?.second ?: ""
+            val displayDate = try {
+                if (dateStr.isNotEmpty()) {
+                    val sdf = SimpleDateFormat("yyyy-MM-dd", Locale.US)
+                    val date = sdf.parse(dateStr)
+                    val dayOfMonth = java.util.Calendar.getInstance().apply { time = date }
+                        .get(java.util.Calendar.DAY_OF_MONTH)
+                    val month = java.text.DateFormatSymbols(Locale("es", "ES")).shortMonths[
+                        java.util.Calendar.getInstance().apply { time = date }
+                            .get(java.util.Calendar.MONTH)
+                    ].replace(".", "")
+                    "$dayOfMonth $month"
+                } else ""
+            } catch (_: Exception) { "" }
             val isCompleted = isGpCompleted(name)
             events.add(CalendarEvent(
                 name = name,
                 circuit = circuit,
-                dateRange = dateRange,
-                startDate = dateRange,
-                endDate = dateRange,
+                dateRange = displayDate,
+                startDate = displayDate,
+                endDate = displayDate,
                 isCompleted = isCompleted,
                 round = i + 1
             ))
@@ -154,7 +163,12 @@ object Scraper {
         val sdf = SimpleDateFormat("yyyy-MM-dd", Locale.US)
         return try {
             val raceDate = sdf.parse(GP_ORDER.find { it.first == name }?.second ?: "2027-01-01")
-            raceDate?.before(Date()) ?: false
+            val monday = java.util.Calendar.getInstance().apply { time = raceDate }
+            monday.add(java.util.Calendar.DAY_OF_MONTH, 1) // Monday
+            monday.set(java.util.Calendar.HOUR_OF_DAY, 6)
+            monday.set(java.util.Calendar.MINUTE, 0)
+            monday.set(java.util.Calendar.SECOND, 0)
+            Date().after(monday.time) // Completed after Monday 06:00
         } catch (_: Exception) { false }
     }
 
